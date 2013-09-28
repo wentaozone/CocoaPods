@@ -4,7 +4,7 @@ module Pod
   describe Project do
 
     before do
-      @project = Project.new(config.sandbox, nil)
+      @project = Project.new(environment.sandbox, nil)
     end
 
     #-------------------------------------------------------------------------#
@@ -57,7 +57,7 @@ module Pod
     describe "File references" do
 
       it "adds the file references for the given source files" do
-        source_files = [ config.sandbox.root + "A_POD/some_file.m" ]
+        source_files = [ environment.sandbox.root + "A_POD/some_file.m" ]
         @project.add_file_references(source_files, 'BananaLib', @project.pods)
         group = @project['Pods/BananaLib/Source Files']
         group.should.not.be.nil
@@ -65,7 +65,7 @@ module Pod
       end
 
       it "adds the only one file reference for a given absolute path" do
-        source_files = [ config.sandbox.root + "A_POD/some_file.m" ]
+        source_files = [ environment.sandbox.root + "A_POD/some_file.m" ]
         @project.add_file_references(source_files, 'BananaLib', @project.pods)
         @project.add_file_references(source_files, 'BananaLib', @project.pods)
         group = @project['Pods/BananaLib/Source Files']
@@ -74,14 +74,14 @@ module Pod
       end
 
       it "returns the file reference for a given source file" do
-        file = config.sandbox.root + "A_POD/some_file.m"
+        file = environment.sandbox.root + "A_POD/some_file.m"
         @project.add_file_references([file], 'BananaLib', @project.pods)
         file_reference = @project.file_reference(file)
         file_reference.path.should == "A_POD/some_file.m"
       end
 
       it "adds the Podfile configured as a Ruby file" do
-        @project.add_podfile(config.sandbox.root + '../Podfile')
+        @project.add_podfile(environment.sandbox.root + '../Podfile')
         f = @project['Podfile']
         f.source_tree.should == 'SOURCE_ROOT'
         f.xc_language_specification_identifier.should == 'xcode.lang.ruby'
@@ -96,7 +96,7 @@ module Pod
 
       describe "#refs_by_absolute_path" do
         it "stores the references by absolute path" do
-          file = config.sandbox.root + "A_POD/some_file.m"
+          file = environment.sandbox.root + "A_POD/some_file.m"
           @project.add_file_references([file], 'BananaLib', @project.pods)
           refs_by_absolute_path = @project.send(:refs_by_absolute_path)
           refs_by_absolute_path.should == {

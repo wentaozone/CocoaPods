@@ -36,10 +36,9 @@ module Pod
     autoload :PodTargetInstaller,       'cocoapods/installer/target_installer/pod_target_installer'
     autoload :UserProjectIntegrator,    'cocoapods/installer/user_project_integrator'
 
-    # include Config::Mixin
-    def config
-      Config::ConfigManager.instance
-    end
+    include Config::Manager
+    include Config::Environment
+
 
     # @return [Sandbox] The sandbox where the Pods should be installed.
     #
@@ -289,8 +288,8 @@ module Pod
     def prepare_pods_project
       UI.message "- Creating Pods project" do
         @pods_project = Pod::Project.new(sandbox, analysis_result.all_user_build_configurations)
-        if config.podfile_path
-          @pods_project.add_podfile(config.podfile_path)
+        if environment.podfile_path
+          @pods_project.add_podfile(environment.podfile_path)
         end
         sandbox.project = @pods_project
         platforms = aggregate_targets.map(&:platform)
@@ -394,8 +393,8 @@ module Pod
       # checkout_options = sandbox.checkout_options
       @lockfile = Lockfile.generate(podfile, analysis_result.specifications)
 
-      UI.message "- Writing Lockfile in #{UI.path config.lockfile_path}" do
-        @lockfile.write_to_disk(config.lockfile_path)
+      UI.message "- Writing Lockfile in #{UI.path environment.lockfile_path}" do
+        @lockfile.write_to_disk(environment.lockfile_path)
       end
 
       UI.message "- Writing Manifest in #{UI.path sandbox.manifest_path}" do
@@ -417,7 +416,7 @@ module Pod
     #
     def integrate_user_project
       UI.section "Integrating client #{'project'.pluralize(aggregate_targets.map(&:user_project_path).uniq.count) }" do
-        installation_root = config.installation_root
+        installation_root = environment.installation_root
         integrator = UserProjectIntegrator.new(podfile, sandbox, installation_root, aggregate_targets)
         integrator.integrate!
       end

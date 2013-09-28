@@ -5,34 +5,34 @@ module Pod
 
     before do
       @file_accessor = fixture_file_accessor('banana-lib/BananaLib.podspec')
-      @pod_target = PodTarget.new([], nil, config.sandbox)
+      @pod_target = PodTarget.new([], nil, environment.sandbox)
       @pod_target.file_accessors = [@file_accessor]
-      @project = Project.new(config.sandbox, nil)
-      @installer = Installer::FileReferencesInstaller.new(config.sandbox, [@pod_target], @project)
+      @project = Project.new(environment.sandbox, nil)
+      @installer = Installer::FileReferencesInstaller.new(environment.sandbox, [@pod_target], @project)
     end
 
     #-------------------------------------------------------------------------#
 
     describe "Installation" do
 
-      it "adds the files references of the source files the Pods project" do
+      it "adds file references of the source files the Pods project" do
         @file_accessor.path_list.read_file_system
         @file_accessor.path_list.expects(:read_file_system)
         @installer.install!
       end
 
-      it "adds the files references of the source files the Pods project" do
+      it "adds file references of the source files the Pods project" do
         @installer.install!
         file_ref = @installer.pods_project['Pods/BananaLib/Source Files/Banana.m']
-        file_ref.should.be.not.nil
+        file_ref.should.not.be.nil
         file_ref.path.should == "../../spec/fixtures/banana-lib/Classes/Banana.m"
       end
 
-      it "adds the files references of the local Pods in a dedicated group" do
-        config.sandbox.store_local_path('BananaLib', 'Some Path')
+      it "adds file references of the local Pods in a dedicated group" do
+        environment.sandbox.store_local_path('BananaLib', 'Some Path')
         @installer.install!
         file_ref = @installer.pods_project['Local Pods/BananaLib/Source Files/Banana.m']
-        file_ref.should.be.not.nil
+        file_ref.should.not.be.nil
       end
 
       xit "adds the file references of the frameworks of the projet" do
@@ -43,10 +43,9 @@ module Pod
 
       end
 
-      it "adds the files references of the resources the Pods project" do
+      it "adds file references of the resources the Pods project" do
         @installer.install!
         file_ref = @installer.pods_project['Pods/BananaLib/Resources/logo-sidebar.png']
-        file_ref.should.be.not.nil
         file_ref.path.should == "../../spec/fixtures/banana-lib/Resources/logo-sidebar.png"
       end
 
@@ -61,7 +60,7 @@ module Pod
 
       it "links the public headers" do
         @installer.install!
-        headers_root = config.sandbox.public_headers.root
+        headers_root = environment.sandbox.public_headers.root
         public_header =  headers_root + 'BananaLib/Banana.h'
         private_header = headers_root + 'BananaLib/BananaPrivate.h'
         public_header.should.exist
@@ -76,20 +75,20 @@ module Pod
 
       describe "#file_accessors" do
         it "returns the file accessors" do
-          pod_target_1 = PodTarget.new([], nil, config.sandbox)
+          pod_target_1 = PodTarget.new([], nil, environment.sandbox)
           pod_target_1.file_accessors = [fixture_file_accessor('banana-lib/BananaLib.podspec')]
-          pod_target_2 = PodTarget.new([], nil, config.sandbox)
+          pod_target_2 = PodTarget.new([], nil, environment.sandbox)
           pod_target_2.file_accessors = [fixture_file_accessor('banana-lib/BananaLib.podspec')]
-          installer = Installer::FileReferencesInstaller.new(config.sandbox, [pod_target_1, pod_target_2], @project)
+          installer = Installer::FileReferencesInstaller.new(environment.sandbox, [pod_target_1, pod_target_2], @project)
           roots = installer.send(:file_accessors).map { |fa| fa.path_list.root }
           roots.should == [fixture('banana-lib'), fixture('banana-lib')]
         end
 
         it "handles libraries empty libraries without file accessors" do
-          pod_target_1 = PodTarget.new([], nil, config.sandbox)
+          pod_target_1 = PodTarget.new([], nil, environment.sandbox)
           pod_target_1.file_accessors = []
-          installer = Installer::FileReferencesInstaller.new(config.sandbox, [pod_target_1], @project)
-          roots = installer.send(:file_accessors).should == []
+          installer = Installer::FileReferencesInstaller.new(environment.sandbox, [pod_target_1], @project)
+          installer.send(:file_accessors).should == []
         end
       end
 
@@ -139,5 +138,4 @@ module Pod
 
   end
 end
-
 

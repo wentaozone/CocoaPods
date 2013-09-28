@@ -9,20 +9,20 @@ module Pod
         xcodeproj 'dummy'
       end
       @target_definition = @podfile.target_definitions['Pods']
-      @project = Project.new(config.sandbox, nil)
+      @project = Project.new(environment.sandbox, nil)
 
-      config.sandbox.project = @project
+      environment.sandbox.project = @project
       path_list = Sandbox::PathList.new(fixture('banana-lib'))
       @spec = fixture_spec('banana-lib/BananaLib.podspec')
       file_accessor = Sandbox::FileAccessor.new(path_list, @spec.consumer(:ios))
       @project.add_file_references(file_accessor.source_files, 'BananaLib', @project.pods)
 
-      @pod_target = PodTarget.new([@spec], @target_definition, config.sandbox)
+      @pod_target = PodTarget.new([@spec], @target_definition, environment.sandbox)
       @pod_target.stubs(:platform).returns(Platform.new(:ios, '6.0'))
       @pod_target.user_build_configurations = { 'Debug' => :debug, 'Release' => :release, 'AppStore' => :release, 'Test' => :debug }
       @pod_target.file_accessors = [file_accessor]
 
-      @installer = Installer::TargetInstaller.new(config.sandbox, @pod_target)
+      @installer = Installer::TargetInstaller.new(environment.sandbox, @pod_target)
     end
 
     it "sets the ARCHS" do

@@ -105,8 +105,10 @@ namespace :gem do
     puts "* Updating Bundle"
     silent_sh('bundle update')
 
-    puts "* Running specs"
-    silent_sh('rake spec:all')
+    unless ENV['SKIP_SPECS']
+      puts "* Running specs"
+      silent_sh('rake spec:all')
+    end
 
     tmp = File.expand_path('../tmp', __FILE__)
     tmp_gems = File.join(tmp, 'gems')
@@ -167,9 +169,16 @@ namespace :spec do
 
   #--------------------------------------#
 
+  unit_specs_command = "bundle exec bacon #{specs('unit/**')}"
+
   desc "Run the unit specs"
   task :unit => :unpack_fixture_tarballs do
-    sh "bundle exec bacon #{specs('unit/**')} -q"
+    sh unit_specs_command
+  end
+
+  desc "Run the unit specs quietly (fail fast, display only one failure)"
+  task :unit_quiet => :unpack_fixture_tarballs do
+    sh "#{unit_specs_command} -q"
   end
 
   #--------------------------------------#
@@ -303,22 +312,6 @@ end
 task :examples => "examples:build"
 namespace :examples do
 
-  def examples
-    require 'pathname'
-    result = []
-    examples = Pathname.new(File.expand_path('../examples', __FILE__))
-    return [examples + ENV['example']] if ENV['example']
-    examples.entries.each do |example|
-      next if %w{ . .. }.include?(example.basename.to_s)
-      example = examples + example
-      next unless example.directory?
-      result << example
-    end
-    result
-  end
-
-  #--------------------------------------#
-
   desc "Open all example workspaces in Xcode, which recreates the schemes."
   task :recreate_workspace_schemes do
     examples.each do |example|
@@ -335,34 +328,26 @@ namespace :examples do
 
   desc "Build all examples"
   task :build do
+    Dir.chdir("examples/AFNetworking Example") do
+      puts "Installing Pods"
+      pod_command = ENV['FROM_GEM'] ? 'sandbox-pod' : 'bundle exec ../../bin/sandbox-pod'
+      execute_command "rm -rf Pods"
+      execute_command "#{pod_command} install --verbose --no-repo-update"
 
-    # TODO: sometimes it uses the installed gem
-    # Rake::Task['gem:install'].invoke
+      puts "Building example: AFNetworking Mac Example'"
+      execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking Example' clean install"
 
-    examples.entries.each do |example|
-      puts "Building example: #{example}"
-      Dir.chdir(example.to_s) do
-        execute_command "rm -rf Pods DerivedData"
-        # WARNING: This appeart to use sytem gems instead of the bundle ones.
-        pod_command = ENV['FROM_GEM'] ? 'sandbox-pod' : 'bundle exec ../../bin/sandbox-pod'
-        execute_command "#{pod_command} install --verbose --no-repo-update"
-        command = "xcodebuild -workspace '#{example.basename}.xcworkspace' -scheme '#{example.basename}'"
-          if (example + 'Podfile').read.include?('platform :ios')
-            # Specifically build against the simulator SDK so we don't have to deal with code signing.
-            xcode_version = `xcodebuild -version`.scan(/Xcode (.*)\n/).first.first
-            major_version = xcode_version.split('.').first.to_i
-            destination_flag_supported = major_version > 4
-            if destination_flag_supported
-              command << " -destination 'platform=iOS Simulator,name=iPhone Retina (4-inch)'"
-            else
-              command << " -sdk "
-              command << Dir.glob("#{`xcode-select -print-path`.chomp}/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator*.sdk").last
-            end
-
-            command << " ONLY_ACTIVE_ARCH=NO"
-          end
-        execute_command(command)
+      puts "Building example: AFNetworking iOS Example'"
+      xcode_version = `xcodebuild -version`.scan(/Xcode (.*)\n/).first.first
+      major_version = xcode_version.split('.').first.to_i
+      # Specifically build against the simulator SDK so we don't have to deal with code signing.
+      if  major_version > 4
+        execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking iOS Example' clean install ONLY_ACTIVE_ARCH=NO -destination 'platform=iOS Simulator,name=iPhone Retina (4-inch)'"
+      else
+        sdk = Dir.glob("#{`xcode-select -print-path`.chomp}/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator*.sdk").last
+        execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking iOS Example' clean install ONLY_ACTIVE_ARCH=NO  -sdk #{sdk}"
       end
+
     end
   end
 

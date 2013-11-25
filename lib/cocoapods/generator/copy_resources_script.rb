@@ -73,6 +73,7 @@ module Pod
           script += %Q[install_resource "#{resource}"\n]
         end
         script += RSYNC_CALL
+        script += XCASSETS_COMPILE
         script
       end
 
@@ -109,6 +110,8 @@ install_resource()
       echo "xcrun momc \\"${PODS_ROOT}/$1\\" \\"${CONFIGURATION_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/`basename "$1" .xcdatamodeld`.momd\\""
       xcrun momc "${PODS_ROOT}/$1" "${CONFIGURATION_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/`basename "$1" .xcdatamodeld`.momd"
       ;;
+    *.xcassets)
+      ;;
     /*)
       echo "$1"
       echo "$1" >> "$RESOURCES_TO_COPY"
@@ -131,6 +134,28 @@ fi
 rm -f "$RESOURCES_TO_COPY"
 EOS
 
+
+      XCASSETS_COMPILE = <<EOS
+
+if [[ -n "${WRAPPER_EXTENSION}" ]] && [ `xcrun --find actool` ] && [ `find . -name '*.xcassets' | wc -l` -ne 0 ]
+then
+  case "${TARGETED_DEVICE_FAMILY}" in 
+    1,2)
+      TARGET_DEVICE_ARGS="--target-device ipad --target-device iphone"
+      ;;
+    1)
+      TARGET_DEVICE_ARGS="--target-device iphone"
+      ;;
+    2)
+      TARGET_DEVICE_ARGS="--target-device ipad"
+      ;;
+    *)
+      TARGET_DEVICE_ARGS="--target-device mac"
+      ;;  
+  esac 
+  find "${PWD}" -name "*.xcassets" -print0 | xargs -0 actool --output-format human-readable-text --notices --warnings --platform "${PLATFORM_NAME}" --minimum-deployment-target "${IPHONEOS_DEPLOYMENT_TARGET}" ${TARGET_DEVICE_ARGS} --compress-pngs --compile "${BUILT_PRODUCTS_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+fi
+EOS
     end
   end
 end

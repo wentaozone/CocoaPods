@@ -28,15 +28,15 @@ s.files = Dir["lib/**/*.rb"] + %w{ bin/pod bin/sandbox-pod README.md LICENSE CHA
 
   # Link with the version of CocoaPods-Core
   s.add_runtime_dependency 'cocoapods-core',       "= #{Pod::VERSION}"
-  s.add_runtime_dependency 'claide',               '~> 0.3.2'
+  s.add_runtime_dependency 'claide',               '~> 0.4.0'
   s.add_runtime_dependency 'cocoapods-downloader', '~> 0.2.0'
-  s.add_runtime_dependency 'xcodeproj',            '~> 0.11.0'
+  s.add_runtime_dependency 'xcodeproj',            '~> 0.14.1'
 
   s.add_runtime_dependency 'colored',       '~> 1.2'
   s.add_runtime_dependency 'escape',        '~> 0.0.4'
-  s.add_runtime_dependency 'json',          '~> 1.8'
+  s.add_runtime_dependency 'json_pure',     '~> 1.8'
   s.add_runtime_dependency 'open4',         '~> 1.3'
-  s.add_runtime_dependency 'activesupport', '~> 3.2'
+  s.add_runtime_dependency 'activesupport', '>= 3.2.15', '< 4'
 
   s.add_development_dependency 'bacon', '~> 1.1'
 
@@ -54,6 +54,9 @@ s.files = Dir["lib/**/*.rb"] + %w{ bin/pod bin/sandbox-pod README.md LICENSE CHA
     lines = text.split("\n")
 
     current_version_index = lines.find_index { |line| line =~ (/^#{current_verison_title}/) }
+    unless current_version_index
+      raise "Update the changelog for the last version"
+    end
     previous_version_lines = lines[(current_version_index+1)...-1]
     previous_version_index = current_version_index + previous_version_lines.find_index { |line| line =~ (/^#{title_token}/) && !line.include?('rc') }
 

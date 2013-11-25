@@ -13,7 +13,6 @@ module Pod
       def install!
         UI.message "- Installing target `#{library.name}` #{library.platform}" do
           add_target
-          move_target_product_file_reference
           add_files_to_build_phases
           add_resources_bundle_targets
           # create_suport_files_group
@@ -40,18 +39,14 @@ module Pod
           library.file_accessors.each do |file_accessor|
             consumer = file_accessor.spec_consumer
             flags = compiler_flags_for_consumer(consumer)
-            source_files = file_accessor.source_files
-            file_refs = source_files.map { |sf| project.reference_for_path(sf) }
-            target.add_file_references(file_refs, flags)
-
+            all_source_files = file_accessor.source_files
+            regular_source_files = all_source_files.reject { |sf| sf.extname == ".d" }
+            regular_file_refs = regular_source_files.map { |sf| project.reference_for_path(sf) }
+            target.add_file_references(regular_file_refs, flags)
+            other_file_refs = (all_source_files - regular_source_files).map { |sf| project.reference_for_path(sf) }
+            target.add_file_references(other_file_refs, nil)
           end
         end
-      end
-
-      def move_target_product_file_reference
-        pod_name = library.pod_name
-        group = project.group_for_spec(pod_name, :products)
-        target.product_reference.move(group)
       end
 
       # Adds the resources of the Pods to the Pods project.
@@ -71,9 +66,7 @@ module Pod
                 next
               end
               file_references = paths.map { |sf| project.reference_for_path(sf) }
-              group = project.group_for_spec(file_accessor.spec.name, :products)
-              product_group = project.group_for_spec(file_accessor.spec.name, :resources)
-              bundle_target = project.new_resources_bundle(bundle_name, file_accessor.spec_consumer.platform_name, product_group)
+              bundle_target = project.new_resources_bundle(bundle_name, file_accessor.spec_consumer.platform_name)
               bundle_target.add_resources(file_references)
 
               library.user_build_configurations.each do |bc_name, type|
@@ -95,12 +88,7 @@ module Pod
         public_gen = Generator::XCConfig::PublicPodXCConfig.new(library)
         UI.message "- Generating public xcconfig file at #{UI.path(path)}" do
           public_gen.save_as(path)
-          #
-          # TODO
           add_file_to_support_group(path)
-          # relative_path = path.relative_path_from(sandbox.root)
-          # group = project.group_for_spec(library.root_spec.name, :support_files)
-          # group.new_file(relative_path)
         end
 
         path = library.xcconfig_private_path
@@ -201,7 +189,7 @@ module Pod
       #
       def add_file_to_support_group(path)
         pod_name = library.pod_name
-        group = project.group_for_spec(pod_name, :support_files)
+        group = project.pod_support_files_group(pod_name)
         group.new_file(path)
       end
 

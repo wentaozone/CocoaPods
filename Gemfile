@@ -19,6 +19,9 @@ group :development do
   gem 'prettybacon', :git => 'https://github.com/irrationalfab/PrettyBacon.git', :branch => 'master'
   gem "rake"
 
+  # For the integration tests
+  gem "diffy"
+
   gem 'mime-types', '< 2' # v2 is 1.9.x only
   gem 'coveralls', :require => false
   # Explicitly add this, otherwise it might sometimes be missing:
@@ -27,12 +30,15 @@ group :development do
 end
 
 group :debugging do
+  # Only while we test the trunk app.
+  gem 'cocoapods-trunk', :git => "https://github.com/alloy/cocoapods-trunk.git"
+
   gem "rb-fsevent"
   gem "kicker", :git => "https://github.com/alloy/kicker.git", :branch => "master"
   gem "awesome_print"
   gem "pry"
-  gem "diffy"
-  gem "ruby-prof"
+  # The released gem leads to stack too deep when profiling a full run.
+  gem "ruby-prof", :git => "https://github.com/ruby-prof/ruby-prof.git"
 end
 
 group :documentation do

@@ -8,16 +8,18 @@ module Pod
       self.summary = 'Generate a Podfile for the current directory.'
       self.description = <<-DESC
         Creates a Podfile for the current directory if none currently exists. If
-        an Xcode project file is specified or if there is only a single project
-        file in the current directory, targets will be automatically generated
-        based on targets defined in the project.
+        an `XCODEPROJ` project file is specified or if there is only a single
+        project file in the current directory, targets will be automatically
+        generated based on targets defined in the project.
 
         It is possible to specify a list of dependencies which will be used by
         the template in the `Podfile.default` (normal targets) `Podfile.test`
         (test targets) files which should be stored in the
         `~/.cocoapods/templates` folder.
       DESC
-      self.arguments = '[XCODEPROJ]'
+      self.arguments = [
+          CLAide::Argument.new('XCODEPROJ', :false)
+      ]
 
       def initialize(argv)
         @podfile_path = Pathname.pwd + "Podfile"

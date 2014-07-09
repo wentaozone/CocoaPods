@@ -69,6 +69,7 @@ module Pod
       @head_pods = []
       @checkout_sources = {}
       @development_pods = {}
+      @pods_with_absolute_path = []
     end
 
     # @return [Lockfile] the manifest which contains the information about the
@@ -159,6 +160,16 @@ module Pod
       end
     end
 
+    # Returns true if the path as originally specified was absolute.
+    #
+    # @param  [String] name
+    #
+    # @return [Bool] true if originally absolute
+    #
+    def local_path_was_absolute?(name)
+      @pods_with_absolute_path.include? name
+    end
+
     # @return [Pathname] the directory where to store the documentation.
     #
     def documentation_dir
@@ -206,7 +217,16 @@ module Pod
     #
     def specification_path(name)
       path = specifications_dir + "#{name}.podspec"
-      path.exist? ? path : nil
+      if path.exist?
+        path
+      else
+        path = specifications_dir + "#{name}.podspec.json"
+        if path.exist?
+          path
+        else
+          nil
+        end
+      end
     end
 
     # Stores a specification in the `Local Podspecs` folder.
@@ -221,8 +241,9 @@ module Pod
     # @todo   Store all the specifications (including those not originating
     #         from external sources) so users can check them.
     #
-    def store_podspec(name, podspec, external_source = false)
-      output_path = specifications_dir(external_source) + "#{name}.podspec"
+    def store_podspec(name, podspec, external_source = false, json = false)
+      file_name = json ? "#{name}.podspec.json" : "#{name}.podspec"
+      output_path = specifications_dir(external_source) + file_name
       output_path.dirname.mkpath
       if podspec.is_a?(String)
         output_path.open('w') { |f| f.puts(podspec) }
@@ -338,11 +359,15 @@ module Pod
     # @param  [#to_s] path
     #         The local path where the Pod is stored.
     #
+    # @param  [Bool] was_absolute
+    #         True if the specified local path was absolute.
+    #
     # @return [void]
     #
-    def store_local_path(name, path)
+    def store_local_path(name, path, was_absolute = false)
       root_name = Specification.root_name(name)
       development_pods[root_name] = path.to_s
+      @pods_with_absolute_path << root_name if was_absolute
     end
 
     # @return [Hash{String=>String}] The path of the Pods with a local source

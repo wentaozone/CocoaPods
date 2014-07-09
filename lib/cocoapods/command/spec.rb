@@ -18,7 +18,9 @@ module Pod
           If a GitHub url is passed the spec is prepopulated.
         DESC
 
-        self.arguments = '[ NAME | https://github.com/USER/REPO ]'
+        self.arguments = [
+            CLAide::Argument.new(%w(NAME https://github.com/USER/REPO), false)
+        ]
 
         def initialize(argv)
           @name_or_url, @url = argv.shift_argument, argv.shift_argument
@@ -51,12 +53,14 @@ module Pod
         self.summary = 'Validates a spec file.'
 
         self.description = <<-DESC
-          Validates `NAME.podspec'. If a directory is provided it validates
+          Validates `NAME.podspec`. If a `DIRECTORY` is provided, it validates
           the podspec files found, including subfolders. In case
           the argument is omitted, it defaults to the current working dir.
         DESC
 
-        self.arguments = '[ NAME.podspec | DIRECTORY | http://PATH/NAME.podspec, ... ]'
+        self.arguments = [
+          CLAide::Argument.new(%w(NAME.podspec DIRECTORY http://PATH/NAME.podspec), false, true),
+        ]
 
         def self.options
           [ ["--quick",       "Lint skips checks that would require to download and build the spec"],
@@ -122,17 +126,17 @@ module Pod
                 end
                 files << output_path
               else if (pathname = Pathname.new(path)).directory?
-                     files += Pathname.glob(pathname + '**/*.podspec')
-                     raise Informative, "No specs found in the current directory." if files.empty?
-                   else
-                     files << (pathname = Pathname.new(path))
-                     raise Informative, "Unable to find a spec named `#{path}'." unless pathname.exist? && path.include?('.podspec')
-                   end
+                files += Pathname.glob(pathname + '**/*.podspec{.json,}')
+                raise Informative, "No specs found in the current directory." if files.empty?
+              else
+                files << (pathname = Pathname.new(path))
+                raise Informative, "Unable to find a spec named `#{path}'." unless pathname.exist? && path.include?('.podspec')
               end
             end
-            files
           end
+          files
         end
+      end
 
         def podspecs_tmp_dir
           Pathname.new(File.join(Pathname.new('/tmp').realpath, '/CocoaPods/Lint_podspec'))
@@ -148,7 +152,9 @@ module Pod
           Prints the path of 'NAME.podspec'
         DESC
 
-        self.arguments = '[ NAME ]'
+        self.arguments = [
+            CLAide::Argument.new('NAME', false)
+        ]
 
         def self.options
           [["--show-all", "Print all versions of the given podspec"]].concat(super)
@@ -180,7 +186,9 @@ module Pod
           Prints 'NAME.podspec' to standard output.
         DESC
 
-        self.arguments = '[ NAME ]'
+        self.arguments = [
+            CLAide::Argument.new('NAME', false)
+        ]
 
         def self.options
           [["--show-all", "Pick from all versions of the given podspec"]].concat(super)
@@ -207,7 +215,7 @@ module Pod
             get_path_of_spec(@spec)
           end
 
-          UI.puts File.open(filepath).read
+          UI.puts File.read(filepath)
         end
       end
 
@@ -220,7 +228,9 @@ module Pod
           Opens 'NAME.podspec' to be edited.
         DESC
 
-        self.arguments = '[ NAME ]'
+        self.arguments = [
+            CLAide::Argument.new('NAME', false)
+        ]
 
         def self.options
           [["--show-all", "Pick which spec to edit from all available versions of the given podspec"]].concat(super)
@@ -342,7 +352,7 @@ module Pod
       # @return [Pathname] the absolute path of the given spec and source
       #
       def pathname_from_spec(spec, source)
-        config.repos_dir + "#{source}/#{spec.name}/#{spec.version}/#{spec.name}.podspec"
+        Pathname(spec.defined_in_file)
       end
 
       # @return [String] of spec paths one on each line
@@ -370,14 +380,19 @@ module Pod
       def spec_and_source_from_set(set)
         sources = set.sources
 
-        best_source = sources.first
-        best_version = best_source.versions(set.name).first
+        best_source = best_version = nil
         sources.each do |source|
-          version = source.versions(set.name).first
-          if version > best_version
+          versions = source.versions(set.name)
+          versions.each do |version|
+            if !best_version or version > best_version
               best_source = source
               best_version = version
+            end
           end
+        end
+
+        if !best_source or !best_version
+          raise Informative, "Unable to locate highest known specification for `#{ set.name }'"
         end
 
         return best_source.specification(set.name, best_version), best_source
@@ -475,7 +490,7 @@ Pod::Spec.new do |s|
                    DESC
 
   s.homepage     = "#{data[:homepage]}"
-  # s.screenshots  = "www.example.com/screenshots_1", "www.example.com/screenshots_2"
+  # s.screenshots  = "www.example.com/screenshots_1.gif", "www.example.com/screenshots_2.gif"
 
 
   # ―――  Spec License  ――――――――――――――――――――――――――――――――――――――――――――――――――――――――――― #

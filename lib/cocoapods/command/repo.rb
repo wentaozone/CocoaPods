@@ -1,4 +1,5 @@
 require 'fileutils'
+require 'cocoapods/command/repo/push'
 
 module Pod
   class Command
@@ -17,7 +18,11 @@ module Pod
           remote can later be referred to by `NAME`.
         DESC
 
-        self.arguments = 'NAME URL [BRANCH]'
+        self.arguments = [
+            CLAide::Argument.new('NAME',   true),
+            CLAide::Argument.new('URL',    true),
+            CLAide::Argument.new('BRANCH', false)
+        ]
 
         def self.options
           [
@@ -63,7 +68,9 @@ module Pod
           this will update all spec-repos in `~/.cocoapods/repos`.
         DESC
 
-        self.arguments = '[NAME]'
+        self.arguments = [
+            CLAide::Argument.new('NAME', false)
+        ]
 
         def initialize(argv)
           @name = argv.shift_argument
@@ -86,7 +93,9 @@ module Pod
           will lint all the spec-repos known to CocoaPods.
         DESC
 
-        self.arguments = '[ NAME | DIRECTORY ]'
+        self.arguments = [
+            CLAide::Argument.new(%w(NAME DIRECTORY), false)
+        ]
 
         def self.options
           [["--only-errors", "Lint presents only the errors"]].concat(super)
@@ -152,7 +161,9 @@ module Pod
           Deletes the remote named `NAME` from the local spec-repos directory at `~/.cocoapods/repos/.`
         DESC
 
-        self.arguments = 'NAME'
+        self.arguments = [
+            CLAide::Argument.new('NAME', true)
+        ]
 
         def initialize(argv)
           @name = argv.shift_argument

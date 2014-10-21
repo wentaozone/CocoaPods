@@ -9,6 +9,7 @@ module Pod
       # @todo should not show a usage banner!
       #
       self.summary = 'Manage spec-repositories'
+      self.default_subcommand = 'list'
 
       class Add < Repo
         self.summary = 'Add a spec repo.'
@@ -19,14 +20,14 @@ module Pod
         DESC
 
         self.arguments = [
-            CLAide::Argument.new('NAME',   true),
-            CLAide::Argument.new('URL',    true),
-            CLAide::Argument.new('BRANCH', false)
+          CLAide::Argument.new('NAME',   true),
+          CLAide::Argument.new('URL',    true),
+          CLAide::Argument.new('BRANCH', false),
         ]
 
         def self.options
           [
-            ["--shallow", "Create a shallow clone (fast clone, but no push capabilities)"],
+            ['--shallow', 'Create a shallow clone (fast clone, but no push capabilities)'],
           ].concat(super)
         end
 
@@ -39,7 +40,7 @@ module Pod
         def validate!
           super
           unless @name && @url
-            help! "Adding a repo needs a `NAME` and a `URL`."
+            help! 'Adding a repo needs a `NAME` and a `URL`.'
           end
         end
 
@@ -69,7 +70,7 @@ module Pod
         DESC
 
         self.arguments = [
-            CLAide::Argument.new('NAME', false)
+          CLAide::Argument.new('NAME', false),
         ]
 
         def initialize(argv)
@@ -94,11 +95,11 @@ module Pod
         DESC
 
         self.arguments = [
-            CLAide::Argument.new(%w(NAME DIRECTORY), false)
+          CLAide::Argument.new(%w(NAME DIRECTORY), false),
         ]
 
         def self.options
-          [["--only-errors", "Lint presents only the errors"]].concat(super)
+          [['--only-errors', 'Lint presents only the errors']].concat(super)
         end
 
         def initialize(argv)
@@ -114,16 +115,16 @@ module Pod
         #
         def run
           if @name
-            dirs = File.exists?(@name) ? [ Pathname.new(@name) ] : [ dir ]
+            dirs = File.exist?(@name) ? [Pathname.new(@name)] : [dir]
           else
-            dirs = config.repos_dir.children.select {|c| c.directory?}
+            dirs = config.repos_dir.children.select(&:directory?)
           end
           dirs.each do |dir|
             SourcesManager.check_version_information(dir)
             UI.puts "\nLinting spec repo `#{dir.realpath.basename}`\n".yellow
 
             validator = Source::HealthReporter.new(dir)
-            validator.pre_check do |name, version|
+            validator.pre_check do |_name, _version|
               UI.print '.'
             end
             report = validator.analyze
@@ -144,7 +145,7 @@ module Pod
 
             UI.puts "Analyzed #{report.analyzed_paths.count} podspecs files.\n\n"
             if report.pods_by_error.count.zero?
-              UI.puts "All the specs passed validation.".green << "\n\n"
+              UI.puts 'All the specs passed validation.'.green << "\n\n"
             else
               raise Informative, "#{report.pods_by_error.count} podspecs failed validation."
             end
@@ -162,7 +163,7 @@ module Pod
         DESC
 
         self.arguments = [
-            CLAide::Argument.new('NAME', true)
+          CLAide::Argument.new('NAME', true),
         ]
 
         def initialize(argv)
@@ -175,7 +176,7 @@ module Pod
           help! 'Deleting a repo needs a `NAME`.' unless @name
           help! "repo #{@name} does not exist" unless File.directory?(dir)
           help! "You do not have permission to delete the #{@name} repository." \
-                "Perhaps try prefixing this command with sudo." unless File.writable?(dir)
+                'Perhaps try prefixing this command with sudo.' unless File.writable?(dir)
         end
 
         def run
@@ -185,13 +186,137 @@ module Pod
         end
       end
 
+      #-----------------------------------------------------------------------#
+
+      class List < Repo
+        self.summary = 'List repos'
+
+        self.description = <<-DESC
+            List the repos from the local spec-repos directory at `~/.cocoapods/repos/.`
+        DESC
+
+        def self.options
+          [["--count-only", "Show the total number of repos"]].concat(super)
+        end
+
+        def initialize(argv)
+          @count_only = argv.flag?('count-only')
+          super
+        end
+
+        # @output  Examples:
+        #
+        #          master
+        #          - type: git (origin)
+        #          - URL:  https://github.com/CocoaPods/Specs.git
+        #          - path: /Users/lascorbe/.cocoapods/repos/master
+        #
+        #          test
+        #          - type: local copy
+        #          - path: /Users/lascorbe/.cocoapods/repos/test
+        #
+        def run
+          sources = SourcesManager.all
+          print_sources(sources) unless @count_only
+          print_count_of_sources(sources)
+        end
+
+        private
+
+        # Pretty-prints the source at the given path.
+        #
+        # @param  [String,Pathname] path
+        #         The path of the source to be printed.
+        #
+        # @return [void]
+        #
+        def print_source_at_path(path)
+          Dir.chdir(path) do
+            if SourcesManager.git_repo?(path)
+              remote_name = branch_remote_name(branch_name)
+              if remote_name
+                UI.puts "- Type: git (#{remote_name})"
+                url = url_of_git_repo(remote_name)
+                UI.puts "- URL:  #{url}"
+              else
+                UI.puts "- Type: git (no remote information available)"
+              end
+            else
+              UI.puts "- Type: local copy"
+            end
+            UI.puts "- Path: #{path}"
+          end
+        end
+
+        # Pretty-prints the given sources.
+        #
+        # @param  [Array<Source>] sources
+        #         The sources that should be printed.
+        #
+        # @return [void]
+        #
+        def print_sources(sources)
+          sources.each do |source|
+            UI.title source.name do
+              print_source_at_path source.repo
+            end
+          end
+          UI.puts "\n"
+        end
+
+        # Pretty-prints the number of sources.
+        #
+        # @param  [Array<Source>] sources
+        #         The sources whose count should be printed.
+        #
+        # @return [void]
+        #
+        def print_count_of_sources(sources)
+          number_of_repos = sources.length
+          repo_string = number_of_repos != 1 ? 'repos' : 'repo'
+          UI.puts "#{number_of_repos} #{repo_string}".green
+        end
+      end
+
+      #-----------------------------------------------------------------------#
+
       extend Executable
       executable :git
 
       def dir
         config.repos_dir + @name
       end
+
+      # Returns the branch name (i.e. master).
+      #
+      # @return [String] The name of the current branch.
+      #
+      def branch_name
+        `git name-rev --name-only HEAD`.strip
+      end
+
+      # Returns the branch remote name (i.e. origin).
+      #
+      # @param  [#to_s] branch_name
+      #         The branch name to look for the remote name.
+      #
+      # @return [String] The given branch's remote name.
+      #
+      def branch_remote_name(branch_name)
+        `git config branch.#{branch_name}.remote`.strip
+      end
+
+      # Returns the url of the given remote name
+      # (i.e. git@github.com:CocoaPods/Specs.git).
+      #
+      # @param  [#to_s] remote_name
+      #         The branch remote name to look for the url.
+      #
+      # @return [String] The URL of the given remote.
+      #
+      def url_of_git_repo(remote_name)
+        `git config remote.#{remote_name}.url`.strip
+      end
     end
   end
 end
-

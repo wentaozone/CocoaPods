@@ -1,33 +1,19 @@
-
-# Sets Travis to run the Ruby specs on OS X machines which are required to
-# build the native extensions of Xcodeproj.
-#
-language: objective-c
-
-env:
-  - RVM_RUBY_VERSION=system
-  - RVM_RUBY_VERSION=1.8.7-p358
+os:
+  - osx
+language: ruby
+cache: bundler
+rvm:
+  - system
 
 before_install:
-  - export LANG=en_US.UTF-8
-  - curl http://curl.haxx.se/ca/cacert.pem -o /usr/local/share/cacert.pem
-  - source ~/.rvm/scripts/rvm
-  - if [[ $RVM_RUBY_VERSION != 'system' ]]; then rvm install $RVM_RUBY_VERSION; fi
-  - rvm use $RVM_RUBY_VERSION
-  - if [[ $RVM_RUBY_VERSION == 'system' ]]; then export ARCHFLAGS=-Wno-error=unused-command-line-argument-hard-error-in-future; fi
-  - if [[ $RVM_RUBY_VERSION == 'system' ]]; then sudo gem install bundler --no-ri --no-rdoc; else gem install bundler --no-ri --no-rdoc; fi
+  # There is a bug in travis. When using system ruby, bundler is not
+  # installed and causes the default install action to fail.
+  - sudo gem install bundler
 
-install:
-  - bundle install --without=debugging documentation --path ./travis_bundle_dir
-
-  # CocoaPods/CocoaPods specific
+after_install:
   - ./bin/pod repo update --silent
 
-script: rake spec
+addons:
+ code_climate:
+   repo_token: 501acd9bc61d80ef6119b69ab42c52fa66cefddcc6724a1e93a79c3d3e32bf55  
 
-notifications:
-  campfire:
-    on_success: change
-    on_failure: always
-    rooms:
-      - secure: "qOE5zmgaHe/qQu3W9rmj7wygA5Ivl+cx50fqWGag2bdRl8ly5yj1NVoOKk/O\nZmQc4Lze+301uvTXi+r5v8A/tF6W1kUZw7yBiKuXoYFUGmDiVR9o2I/FPwkL\ngSzPJttrXTQfkQ4PbnrkX+JO+5bLWrKaO0hKXT4B2yUu4UXLVk0="

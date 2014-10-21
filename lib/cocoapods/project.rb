@@ -1,14 +1,12 @@
 require 'xcodeproj'
 
 module Pod
-
   # The Pods project.
   #
   # Model class which provides helpers for working with the Pods project
   # through the installation process.
   #
   class Project < Xcodeproj::Project
-
     # @param  [Pathname, String] path @see path
     # @param  [Bool] skip_initialization
     #         Wether the project should be initialized from scratch.
@@ -34,7 +32,6 @@ module Pod
     #
     attr_reader :development_pods
 
-
     public
 
     # @!group Pod Groups
@@ -58,7 +55,7 @@ module Pod
     # @return [PBXGroup] The new group.
     #
     def add_pod_group(pod_name, path, development = false, absolute = false)
-      raise "[BUG]" if pod_group(pod_name)
+      raise '[BUG]' if pod_group(pod_name)
 
       parent_group = development ? development_pods : pods
       source_tree = absolute ? :absolute : :group
@@ -125,12 +122,11 @@ module Pod
     #
     # @return [PBXGroup] The group.
     #
-    def pod_support_files_group(pod_name)
+    def pod_support_files_group(pod_name, dir)
       group = pod_group(pod_name)
       support_files_group = group['Support Files']
       unless support_files_group
-        support_files_group = group.new_group('Support Files')
-        support_files_group.source_tree = 'SOURCE_ROOT'
+        support_files_group = group.new_group('Support Files', dir)
       end
       support_files_group
     end
@@ -193,6 +189,37 @@ module Pod
       podfile_ref
     end
 
+    # Adds a new build configuration to the project and populates it with
+    # default settings according to the provided type.
+    #
+    # @note   This method extends the original Xcodeproj implementation to
+    #         include a preprocessor definition named after the build
+    #         setting. This is done to support the TargetEnvironmentHeader
+    #         specification of Pods available only on certain build
+    #         configurations.
+    #
+    # @param  [String] name
+    #         The name of the build configuration.
+    #
+    # @param  [Symbol] type
+    #         The type of the build configuration used to populate the build
+    #         settings, must be :debug or :release.
+    #
+    # @return [XCBuildConfiguration] The new build configuration.
+    #
+    def add_build_configuration(name, type)
+      build_configuration = super
+      values = ["#{name.gsub(/[^a-zA-Z0-9_]/, '_').upcase}=1"]
+      settings = build_configuration.build_settings
+      definitions = Array(settings['GCC_PREPROCESSOR_DEFINITIONS'])
+      values.each do |value|
+        unless definitions.include?(value)
+          definitions << value
+        end
+      end
+      settings['GCC_PREPROCESSOR_DEFINITIONS'] = definitions
+      build_configuration
+    end
 
     private
 
@@ -205,6 +232,5 @@ module Pod
     attr_reader :refs_by_absolute_path
 
     #-------------------------------------------------------------------------#
-
   end
 end

@@ -21,27 +21,29 @@ Gem::Specification.new do |s|
                   "in, third party open-source libraries, by creating a more centralized " \
                   "ecosystem."
 
-s.files = Dir["lib/**/*.rb"] + %w{ bin/pod bin/sandbox-pod README.md LICENSE CHANGELOG.md }
+  s.files = Dir["lib/**/*.rb"] + %w{ bin/pod bin/sandbox-pod README.md LICENSE CHANGELOG.md }
 
   s.executables   = %w{ pod sandbox-pod }
   s.require_paths = %w{ lib }
 
   # Link with the version of CocoaPods-Core
   s.add_runtime_dependency 'cocoapods-core',       "= #{Pod::VERSION}"
-  s.add_runtime_dependency 'claide',               '~> 0.6.1'
-  s.add_runtime_dependency 'xcodeproj',            '~> 0.17.0'
-  s.add_runtime_dependency 'cocoapods-downloader', '~> 0.6.1'
-  s.add_runtime_dependency 'cocoapods-plugins',    '~> 0.2.0'
-  s.add_runtime_dependency 'cocoapods-try',        '~> 0.3.0'
-  s.add_runtime_dependency 'cocoapods-trunk',      '~> 0.1.1'
+  s.add_runtime_dependency 'claide',               '~> 0.7.0'
+  s.add_runtime_dependency 'xcodeproj',            '~> 0.19.4'
+  s.add_runtime_dependency 'cocoapods-downloader', '~> 0.7.2'
+  s.add_runtime_dependency 'cocoapods-plugins',    '~> 0.3.1'
+  s.add_runtime_dependency 'cocoapods-try',        '~> 0.4.1'
+  s.add_runtime_dependency 'cocoapods-trunk',      '~> 0.3.1'
 
   s.add_runtime_dependency 'colored',       '~> 1.2'
   s.add_runtime_dependency 'escape',        '~> 0.0.4'
   s.add_runtime_dependency 'json_pure',     '~> 1.8'
   s.add_runtime_dependency 'open4',         '~> 1.3'
   s.add_runtime_dependency 'activesupport', '>= 3.2.15', '< 4'
-  s.add_runtime_dependency 'nap',           '~> 0.7'
+  s.add_runtime_dependency 'nap',           '~> 0.8'
 
+  s.add_development_dependency 'bundler', '~> 1.3'
+  s.add_development_dependency 'rake'
   s.add_development_dependency 'bacon', '~> 1.1'
 
   ## Make sure you can build the gem on older versions of RubyGems too:
@@ -49,23 +51,4 @@ s.files = Dir["lib/**/*.rb"] + %w{ bin/pod bin/sandbox-pod README.md LICENSE CHA
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.required_ruby_version = '>= 1.8.7'
   s.specification_version = 3 if s.respond_to? :specification_version
-
-  changelog_path = File.expand_path('../CHANGELOG.md', __FILE__)
-  if File.exists?(changelog_path)
-    title_token = '## '
-    current_verison_title = title_token +  Pod::VERSION.to_s
-    text = File.open(changelog_path, "r:UTF-8") { |f| f.read }
-    lines = text.split("\n")
-
-    current_version_index = lines.find_index { |line| line =~ (/^#{current_verison_title}/) }
-    unless current_version_index
-      raise "Update the changelog for the last version"
-    end
-    previous_version_lines = lines[(current_version_index+1)...-1]
-    previous_version_index = current_version_index + previous_version_lines.find_index { |line| line =~ (/^#{title_token}/) && !line.include?('rc') }
-
-    relevant = lines[current_version_index..previous_version_index]
-
-    s.post_install_message = "\nCHANGELOG:\n\n" + relevant.join("\n") + "\n"
-  end
 end

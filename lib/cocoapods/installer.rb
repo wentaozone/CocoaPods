@@ -1,7 +1,6 @@
 require 'active_support/core_ext/string/inflections'
 
 module Pod
-
   # The Installer is responsible of taking a Podfile and transform it in the
   # Pods libraries. It also integrates the user project so the Pods
   # libraries can be used out of the box.
@@ -29,13 +28,14 @@ module Pod
   # source control.
   #
   class Installer
-
+    autoload :AggregateTargetInstaller, 'cocoapods/installer/target_installer/aggregate_target_installer'
     autoload :Analyzer,                 'cocoapods/installer/analyzer'
     autoload :FileReferencesInstaller,  'cocoapods/installer/file_references_installer'
+    autoload :HooksContext,             'cocoapods/installer/hooks_context'
+    autoload :Migrator,                 'cocoapods/installer/migrator'
     autoload :PodSourceInstaller,       'cocoapods/installer/pod_source_installer'
-    autoload :TargetInstaller,          'cocoapods/installer/target_installer'
-    autoload :AggregateTargetInstaller, 'cocoapods/installer/target_installer/aggregate_target_installer'
     autoload :PodTargetInstaller,       'cocoapods/installer/target_installer/pod_target_installer'
+    autoload :TargetInstaller,          'cocoapods/installer/target_installer'
     autoload :UserProjectIntegrator,    'cocoapods/installer/user_project_integrator'
 
     include Config::Mixin
@@ -73,7 +73,7 @@ module Pod
 
     # Installs the Pods.
     #
-    # The installation process of is mostly linear with few minor complications
+    # The installation process is mostly linear with a few minor complications
     # to keep in mind:
     #
     # - The stored podspecs need to be cleaned before the resolution step
@@ -86,6 +86,7 @@ module Pod
     # @return [void]
     #
     def install!
+      prepare
       resolve_dependencies
       download_dependencies
       generate_pods_project
@@ -93,16 +94,24 @@ module Pod
       perform_post_install_actions
     end
 
+    def prepare
+      UI.message 'Preparing' do
+        sandbox.prepare
+        Migrator.migrate(sandbox)
+      end
+    end
+
     def resolve_dependencies
-      UI.section "Analyzing dependencies" do
+      UI.section 'Analyzing dependencies' do
         analyze
+        validate_build_configurations
         prepare_for_legacy_compatibility
         clean_sandbox
       end
     end
 
     def download_dependencies
-      UI.section "Downloading dependencies" do
+      UI.section 'Downloading dependencies' do
         create_file_accessors
         install_pod_sources
         run_pre_install_hooks
@@ -111,13 +120,12 @@ module Pod
     end
 
     def generate_pods_project
-      UI.section "Generating Pods project" do
+      UI.section 'Generating Pods project' do
         prepare_pods_project
         install_file_references
         install_libraries
         set_target_dependencies
-        link_aggregate_target
-        run_post_install_hooks
+        run_podfile_post_install_hooks
         write_pod_project
         write_lockfiles
       end
@@ -177,6 +185,23 @@ module Pod
       @aggregate_targets = analyzer.result.targets
     end
 
+    # Ensures that the white-listed build configurations are known to prevent
+    # silent typos.
+    #
+    # @raise  If a unknown user configuration is found.
+    #
+    def validate_build_configurations
+      whitelisted_configs = pod_targets.map do |target|
+        target.target_definition.all_whitelisted_configurations.map(&:downcase)
+      end.flatten.uniq
+      all_user_configurations = analysis_result.all_user_build_configurations.keys.map(&:downcase)
+
+      remainder = whitelisted_configs - all_user_configurations
+      unless remainder.empty?
+        raise Informative, "Unknown #{'configuration'.pluralize(remainder.size)} whitelisted: #{remainder.sort.to_sentence}."
+      end
+    end
+
     # Prepares the Pods folder in order to be compatible with the most recent
     # version of CocoaPods.
     #
@@ -201,7 +226,7 @@ module Pod
       end
 
       unless sandbox_state.deleted.empty?
-        title_options = { :verbose_prefix => "-> ".red }
+        title_options = { :verbose_prefix => '-> '.red }
         sandbox_state.deleted.each do |pod_name|
           UI.titled_section("Removing #{pod_name}".red, title_options) do
             sandbox.clean_pod(pod_name)
@@ -235,7 +260,7 @@ module Pod
     def install_pod_sources
       @installed_specs = []
       pods_to_install = sandbox_state.added | sandbox_state.changed
-      title_options = { :verbose_prefix => "-> ".green }
+      title_options = { :verbose_prefix => '-> '.green }
       root_specs.sort_by(&:name).each do |spec|
         if pods_to_install.include?(spec.name)
           if sandbox_state.changed.include?(spec.name) && sandbox.manifest
@@ -270,7 +295,6 @@ module Pod
 
       @pod_installers ||= []
       pod_installer = PodSourceInstaller.new(sandbox, specs_by_platform)
-      pod_installer.aggressive_cache = config.aggressive_cache?
       pod_installer.install!
       @pod_installers << pod_installer
       @installed_specs.concat(specs_by_platform.values.flatten.uniq)
@@ -283,9 +307,7 @@ module Pod
     def clean_pod_sources
       return unless config.clean?
       return unless @pod_installers
-      @pod_installers.each do |pod_installer|
-        pod_installer.clean!
-      end
+      @pod_installers.each(&:clean!)
     end
 
     # Performs any post-installation actions
@@ -293,7 +315,15 @@ module Pod
     # @return [void]
     #
     def perform_post_install_actions
+      run_plugins_post_install_hooks
       warn_for_deprecations
+    end
+
+    # Runs the registered callbacks for the plugins post install hooks.
+    #
+    def run_plugins_post_install_hooks
+      context = HooksContext.generate(sandbox, aggregate_targets)
+      HooksManager.run(:post_install, context)
     end
 
     # Prints a warning for any pods that are deprecated
@@ -321,7 +351,7 @@ module Pod
     # @todo   Clean and modify the project if it exists.
     #
     def prepare_pods_project
-      UI.message "- Creating Pods project" do
+      UI.message '- Creating Pods project' do
         @pods_project = Pod::Project.new(sandbox.project_path)
 
         analysis_result.all_user_build_configurations.each do |name, type|
@@ -353,7 +383,6 @@ module Pod
       end
     end
 
-
     # Installs the file references in the Pods project. This is done once per
     # Pod as the same file reference might be shared by multiple aggregate
     # targets.
@@ -371,15 +400,15 @@ module Pod
     # @return [void]
     #
     def install_libraries
-      UI.message"- Installing libraries" do
+      UI.message '- Installing targets' do
         pod_targets.sort_by(&:name).each do |pod_target|
-          next if pod_target.target_definition.empty?
+          next if pod_target.target_definition.dependencies.empty?
           target_installer = PodTargetInstaller.new(sandbox, pod_target)
           target_installer.install!
         end
 
         aggregate_targets.sort_by(&:name).each do |target|
-          next if target.target_definition.empty?
+          next if target.target_definition.dependencies.empty?
           target_installer = AggregateTargetInstaller.new(sandbox, target)
           target_installer.install!
         end
@@ -415,21 +444,6 @@ module Pod
       end
     end
 
-    # Links the aggregate targets with all the dependent libraries.
-    #
-    # @note   This is run in the integration step to ensure that targets
-    #         have been created for all per spec libraries.
-    #
-    def link_aggregate_target
-      aggregate_targets.each do |aggregate_target|
-        native_target = aggregate_target.target
-        aggregate_target.pod_targets.each do |pod_target|
-          product = pod_target.target.product_reference
-          native_target.frameworks_build_phase.add_file_reference(product)
-        end
-      end
-    end
-
     # Writes the Pods project to the disk.
     #
     # @return [void]
@@ -438,7 +452,7 @@ module Pod
       UI.message "- Writing Xcode project file to #{UI.path sandbox.project_path}" do
         pods_project.pods.remove_from_project if pods_project.pods.empty?
         pods_project.development_pods.remove_from_project if pods_project.development_pods.empty?
-        pods_project.sort({:groups_position => :below})
+        pods_project.sort(:groups_position => :below)
         pods_project.recreate_user_schemes(false)
         pods_project.save
       end
@@ -494,9 +508,9 @@ module Pod
     # @return [void]
     #
     def run_pre_install_hooks
-      UI.message "- Running pre install hooks" do
+      UI.message '- Running pre install hooks' do
         executed = run_podfile_pre_install_hook
-        UI.message "- Podfile" if executed
+        UI.message '- Podfile' if executed
       end
     end
 
@@ -509,8 +523,8 @@ module Pod
     def run_podfile_pre_install_hook
       podfile.pre_install!(installer_rep)
     rescue => e
-      raise Informative, "An error occurred while processing the pre-install " \
-        "hook of the Podfile." \
+      raise Informative, 'An error occurred while processing the pre-install ' \
+        'hook of the Podfile.' \
         "\n\n#{e.message}\n\n#{e.backtrace * "\n"}"
     end
 
@@ -521,10 +535,10 @@ module Pod
     #
     # @return [void]
     #
-    def run_post_install_hooks
-      UI.message "- Running post install hooks" do
+    def run_podfile_post_install_hooks
+      UI.message '- Running post install hooks' do
         executed = run_podfile_post_install_hook
-        UI.message "- Podfile" if executed
+        UI.message '- Podfile' if executed
       end
     end
 
@@ -537,8 +551,8 @@ module Pod
     def run_podfile_post_install_hook
       podfile.post_install!(installer_rep)
     rescue => e
-      raise Informative, "An error occurred while processing the post-install " \
-        "hook of the Podfile." \
+      raise Informative, 'An error occurred while processing the post-install ' \
+        'hook of the Podfile.' \
         "\n\n#{e.message}\n\n#{e.backtrace * "\n"}"
     end
 
@@ -582,7 +596,7 @@ module Pod
     # @return [Array<PodRepresentation>]
     #
     def pod_reps
-      root_specs.sort_by { |spec| spec.name }.map { |spec| pod_rep(spec.name) }
+      root_specs.sort_by(&:name).map { |spec| pod_rep(spec.name) }
     end
 
     # Returns the libraries which use the given specification.
@@ -615,7 +629,7 @@ module Pod
     #         installation.
     #
     def root_specs
-      analysis_result.specifications.map { |spec| spec.root }.uniq
+      analysis_result.specifications.map(&:root).uniq
     end
 
     # @return [SpecsState] The state of the sandbox returned by the analyzer.
@@ -625,6 +639,5 @@ module Pod
     end
 
     #-------------------------------------------------------------------------#
-
   end
 end

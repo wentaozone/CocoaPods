@@ -16,8 +16,7 @@ module Pod
 
       def self.options
         [
-          ["--no-shallow", "Clone full history so push will work"],
-          ["--push",       "Use this option to enable push access once granted"],
+          ['--no-shallow', 'Clone full history so push will work'],
         ].concat(super)
       end
 
@@ -25,13 +24,12 @@ module Pod
       executable :git
 
       def initialize(argv)
-        @push_option = argv.flag?('push')
-        @shallow     = argv.flag?('shallow', !@push_option)
+        @shallow = argv.flag?('shallow', true)
         super
       end
 
       def run
-        UI.section "Setting up CocoaPods master repo" do
+        UI.section 'Setting up CocoaPods master repo' do
           if master_repo_dir.exist?
             set_master_repo_url
             set_master_repo_branch
@@ -43,24 +41,24 @@ module Pod
           end
         end
 
-        access_type = push? ? "push" : "read-only"
-        UI.puts "Setup completed (#{access_type} access)".green
+        UI.puts "Setup completed".green
       end
 
       #--------------------------------------#
 
       # @!group Setup steps
 
-      # Migrates any repos from the old directory structure to the new directory
-      # structure.
+      # Migrates any repos from the old directory structure to the new
+      # directory structure.
       #
-      # @return [void]
+      # @todo: Remove by 1.0
+      #
       def migrate_repos
         config.repos_dir.mkpath
         Dir.foreach old_master_repo_dir.parent do |repo_dir|
           source_repo_dir = old_master_repo_dir.parent + repo_dir
           target_repo_dir = config.repos_dir + repo_dir
-          if not repo_dir =~ /\.+/ and source_repo_dir != config.repos_dir
+          if repo_dir !~ /\.+/ && source_repo_dir != config.repos_dir
             FileUtils.mv source_repo_dir, target_repo_dir
           end
         end
@@ -103,7 +101,7 @@ module Pod
       #
       def set_master_repo_branch
         Dir.chdir(master_repo_dir) do
-          git("checkout master")
+          git('checkout master')
         end
       end
 
@@ -115,38 +113,13 @@ module Pod
       #         be enabled.
       #
       def url
-        push? ? read_write_url : read_only_url
+        self.class.read_only_url
       end
 
       # @return [String] the read only url of the master repo.
       #
-      def read_only_url
+      def self.read_only_url
         'https://github.com/CocoaPods/Specs.git'
-      end
-
-      # @return [String] the read-write url of the master repo.
-      #
-      def read_write_url
-        'git@github.com:CocoaPods/Specs.git'
-      end
-
-      # Checks if the user asked to setup the master repo in push mode or if
-      # the repo was already in push mode.
-      #
-      # @return [String] whether the master repo should be set up in push mode.
-      #
-      def push?
-        @push ||= (@push_option || master_repo_is_push?)
-      end
-
-      # @return [Bool] if the master repo is already configured in push mode.
-      #
-      def master_repo_is_push?
-        return false unless master_repo_dir.exist?
-        Dir.chdir(master_repo_dir) do
-          url = git('config --get remote.origin.url')
-          url.chomp == read_write_url
-        end
       end
 
       # @return [Pathname] the directory of the master repo.

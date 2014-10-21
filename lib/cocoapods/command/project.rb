@@ -1,16 +1,47 @@
 module Pod
   class Command
+    # Provides support for commands to take a user-specified `project directory`
+    #
+    module ProjectDirectory
+      module Options
+        def options
+          [
+            ['--project-directory=/project/dir/', 'The path to the root of the project directory'],
+          ].concat(super)
+        end
+      end
 
-    # Provides support the common behaviour of the `install` and `update`
+      def self.included(base)
+        base.extend(Options)
+      end
+
+      def initialize(argv)
+        if project_directory = argv.option('project-directory')
+          @project_directory = Pathname.new(project_directory).expand_path
+        end
+        config.installation_root = @project_directory
+        super
+      end
+
+      def validate!
+        super
+        if @project_directory && !@project_directory.directory?
+          raise Informative,
+                "`#{@project_directory}` is not a valid directory."
+        end
+      end
+    end
+
+    # Provides support for the common behaviour of the `install` and `update`
     # commands.
     #
     module Project
       module Options
         def options
           [
-            ["--no-clean",       "Leave SCM dirs like `.git` and `.svn` intact after downloading"],
-            ["--no-integrate",   "Skip integration of the Pods libraries in the Xcode project(s)"],
-            ["--no-repo-update", "Skip running `pod repo update` before install"],
+            ['--no-clean',       'Leave SCM dirs like `.git` and `.svn` intact after downloading'],
+            ['--no-integrate',   'Skip integration of the Pods libraries in the Xcode project(s)'],
+            ['--no-repo-update', 'Skip running `pod repo update` before install'],
           ].concat(super)
         end
       end
@@ -76,7 +107,8 @@ module Pod
     class Update < Command
       include Project
 
-      self.summary = 'Update outdated project dependencies and create new Podfile.lock'
+      self.summary = 'Update outdated project dependencies and create new ' \
+        'Podfile.lock'
 
       self.description = <<-DESC
         Updates the Pods identified by the specified `POD_NAMES`. If no
@@ -102,22 +134,27 @@ module Pod
           verify_lockfile_exists!
 
           # Check if all given pods are installed
-          missing_pods = @pods.select { |pod| !config.lockfile.pod_names.include?(pod) }
+          missing_pods = @pods.select do |pod|
+            !config.lockfile.pod_names.include?(pod)
+          end
+
           if missing_pods.length > 0
-            raise Informative, (missing_pods.length > 1 \
-              ? "Pods %s are not installed and cannot be updated" \
-              : "Pod %s is not installed and cannot be updated"
-            ) % missing_pods.map { |p| "`#{p}`" }.join(', ')
+            if missing_pods.length > 1
+              message = "Pods `#{missing_pods.join('`, `')}` are not " \
+                'installed and cannot be updated'
+            else
+              message = "The `#{missing_pods.first}` Pod is not installed " \
+                'and cannot be updated'
+            end
+            raise Informative, message
           end
 
           run_install_with_update(:pods => @pods)
         else
-          UI.puts "Update all pods".yellow unless @pods
+          UI.puts 'Update all pods'.yellow unless @pods
           run_install_with_update(true)
         end
       end
     end
-
   end
 end
-

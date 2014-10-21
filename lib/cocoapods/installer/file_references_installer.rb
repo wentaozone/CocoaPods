@@ -1,11 +1,9 @@
 module Pod
   class Installer
-
     # Controller class responsible of installing the file references of the
     # specifications in the Pods project.
     #
     class FileReferencesInstaller
-
       # @return [Sandbox] The sandbox of the installation.
       #
       attr_reader :sandbox
@@ -68,7 +66,7 @@ module Pod
       # @return [void]
       #
       def add_source_files_references
-        UI.message "- Adding source files to Pods project" do
+        UI.message '- Adding source files to Pods project' do
           add_file_accessors_paths_to_pods_group(:source_files)
         end
       end
@@ -78,7 +76,7 @@ module Pod
       # @return [void]
       #
       def add_frameworks_bundles
-        UI.message "- Adding frameworks to Pods project" do
+        UI.message '- Adding frameworks to Pods project' do
           add_file_accessors_paths_to_pods_group(:vendored_frameworks, :frameworks)
         end
       end
@@ -88,7 +86,7 @@ module Pod
       # @return [void]
       #
       def add_vendored_libraries
-        UI.message "- Adding libraries to Pods project" do
+        UI.message '- Adding libraries to Pods project' do
           add_file_accessors_paths_to_pods_group(:vendored_libraries, :frameworks)
         end
       end
@@ -101,7 +99,7 @@ module Pod
       # @return [void]
       #
       def add_resources
-        UI.message "- Adding resources to Pods project" do
+        UI.message '- Adding resources to Pods project' do
           add_file_accessors_paths_to_pods_group(:resources, :resources)
           add_file_accessors_paths_to_pods_group(:resource_bundle_files, :resources)
         end
@@ -112,7 +110,7 @@ module Pod
       # @return [void]
       #
       def link_headers
-        UI.message "- Linking headers" do
+        UI.message '- Linking headers' do
           libraries.each do |library|
             library.file_accessors.each do |file_accessor|
               headers_sandbox = Pathname.new(file_accessor.spec.root.name)
@@ -185,7 +183,7 @@ module Pod
       def header_mappings(headers_sandbox, file_accessor, headers)
         consumer = file_accessor.spec_consumer
         dir = headers_sandbox
-        dir = dir + consumer.header_dir if consumer.header_dir
+        dir += consumer.header_dir if consumer.header_dir
 
         mappings = {}
         headers.each do |header|
@@ -193,7 +191,7 @@ module Pod
           if consumer.header_mappings_dir
             header_mappings_dir = file_accessor.path_list.root + consumer.header_mappings_dir
             relative_path = header.relative_path_from(header_mappings_dir)
-            sub_dir = sub_dir + relative_path.dirname
+            sub_dir += relative_path.dirname
           end
           mappings[sub_dir] ||= []
           mappings[sub_dir] << header
@@ -202,7 +200,6 @@ module Pod
       end
 
       #-----------------------------------------------------------------------#
-
     end
   end
 end

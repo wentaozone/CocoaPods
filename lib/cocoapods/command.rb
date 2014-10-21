@@ -7,8 +7,6 @@ module Pod
   end
 
   class Command < CLAide::Command
-
-    require 'cocoapods/command/help'
     require 'cocoapods/command/inter_process_communication'
     require 'cocoapods/command/lib'
     require 'cocoapods/command/list'
@@ -20,14 +18,13 @@ module Pod
     require 'cocoapods/command/spec'
     require 'cocoapods/command/init'
 
-    # TODO: remove
-    require 'cocoapods/command/push'
-
     self.abstract_command = true
     self.command = 'pod'
     self.version = VERSION
     self.description = 'CocoaPods, the Objective-C library package manager.'
     self.plugin_prefix = 'cocoapods'
+
+    [Install, Update, Outdated, IPC::Podfile, IPC::Repl].each { |c| c.send(:include, ProjectDirectory) }
 
     def self.options
       [
@@ -44,15 +41,20 @@ module Pod
     end
 
     def self.run(argv)
-      help! "You cannot run CocoaPods as root." if Process.uid == 0
+      help! 'You cannot run CocoaPods as root.' if Process.uid == 0
+      verify_git_version!
+
       super(argv)
       UI.print_warnings
     end
 
     def self.report_error(exception)
-      if exception.is_a?(Interrupt)
-        puts "[!] Cancelled".red
+      case exception
+      when Interrupt
+        puts '[!] Cancelled'.red
         Config.instance.verbose? ? raise : exit(1)
+      when SystemExit
+        raise
       else
         if ENV['COCOA_PODS_ENV'] != 'development'
           puts UI::ErrorReport.report(exception)
@@ -76,9 +78,9 @@ module Pod
     def initialize(argv)
       super
       config.silent = argv.flag?('silent', config.silent)
-      config.verbose = self.verbose? unless self.verbose.nil?
+      config.verbose = self.verbose? unless verbose.nil?
       unless self.ansi_output?
-        String.send(:define_method, :colorize) { |string , _| string }
+        String.send(:define_method, :colorize) { |string, _| string }
       end
     end
 
@@ -96,7 +98,7 @@ module Pod
     #
     def verify_podfile_exists!
       unless config.podfile
-        raise Informative, "No `Podfile' found in the current working directory."
+        raise Informative, "No `Podfile' found in the project directory."
       end
     end
 
@@ -108,9 +110,21 @@ module Pod
     #
     def verify_lockfile_exists!
       unless config.lockfile
-        raise Informative, "No `Podfile.lock' found in the current working directory, run `pod install'."
+        raise Informative, "No `Podfile.lock' found in the project directory, run `pod install'."
+      end
+    end
+
+    def self.verify_git_version!
+      begin
+        git_version = `git version`.strip
+      rescue Errno::ENOENT
+        help! 'CocoaPods requires you to have `git` installed.'
+      end
+
+      git_version = Version.new(git_version.split[2])
+      if git_version < Pod::Version.new('1.7.5')
+        help! 'CocoaPods requires git version 1.7.5 or newer. Please update git.'
       end
     end
   end
 end
-

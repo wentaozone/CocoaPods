@@ -9,7 +9,7 @@ module Pod
       DESC
 
       def self.options
-        [["--no-repo-update", "Skip running `pod repo update` before install"]].concat(super)
+        [['--no-repo-update', 'Skip running `pod repo update` before install']].concat(super)
       end
 
       def initialize(argv)
@@ -23,13 +23,13 @@ module Pod
       # @todo fix.
       #
       def run
-
         if updates.empty?
-          UI.puts "No updates are available.".yellow
+          UI.puts 'No updates are available.'.yellow
         else
-          UI.section "The following updates are available:" do
-            updates.each do |(name, from_version, to_version)|
-              UI.puts "- #{name} #{from_version} -> #{to_version}"
+          UI.section 'The following updates are available:' do
+            updates.each do |(name, from_version, matching_version, to_version)|
+              UI.puts "- #{name} #{from_version} -> #{matching_version} " \
+                "(latest version #{to_version})"
             end
           end
         end
@@ -46,10 +46,16 @@ module Pod
             end
           end
         end
-
       end
 
       private
+
+      def analyzer
+        @analyzer ||= begin
+          verify_podfile_exists!
+          Installer::Analyzer.new(config.sandbox, config.podfile, config.lockfile)
+        end
+      end
 
       def updates
         @updates ||= begin
@@ -59,11 +65,26 @@ module Pod
             pod_name = spec.root.name
             lockfile_version = lockfile.version(pod_name)
             if source_version > lockfile_version
-              [pod_name, lockfile_version, source_version]
+              matching_spec = unlocked_pods.find { |s| s.name == pod_name }
+              matching_version =
+                matching_spec ? matching_spec.version : "(unused)"
+              [pod_name, lockfile_version, matching_version, source_version]
             else
               nil
             end
           end.compact.uniq
+        end
+      end
+
+      def unlocked_pods
+        @unlocked_pods ||= begin
+          pods = []
+          UI.titled_section('Analyzing dependencies') do
+            pods = Installer::Analyzer.new(config.sandbox, config.podfile).
+              analyze(false).
+              specs_by_target.values.flatten.uniq
+          end
+          pods
         end
       end
 
@@ -77,8 +98,9 @@ module Pod
 
       def spec_sets
         @spec_sets ||= begin
+          aggregate = Source::Aggregate.new(analyzer.sources.map(&:repo))
           installed_pods.map do |pod_name|
-            SourcesManager.search(Dependency.new(pod_name))
+            aggregate.search(Dependency.new(pod_name))
           end.compact.uniq
         end
       end
@@ -97,9 +119,6 @@ module Pod
           config.lockfile
         end
       end
-
     end
   end
 end
-
-

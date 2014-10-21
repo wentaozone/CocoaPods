@@ -17,8 +17,8 @@ module Pod
         DESC
 
         self.arguments = [
-            CLAide::Argument.new('NAME', true),
-            CLAide::Argument.new('TEMPLATE_URL', false)
+          CLAide::Argument.new('NAME', true),
+          CLAide::Argument.new('TEMPLATE_URL', false),
         ]
 
         def initialize(argv)
@@ -29,8 +29,8 @@ module Pod
 
         def validate!
           super
-          help! "A name for the Pod is required." unless @name
-          help! "The Pod name cannot contain spaces." if @name.match(/\s/)
+          help! 'A name for the Pod is required.' unless @name
+          help! 'The Pod name cannot contain spaces.' if @name.match(/\s/)
           help! "The Pod name cannot begin with a '.'" if @name[0, 1] == '.'
         end
 
@@ -48,11 +48,10 @@ module Pod
 
         extend Executable
         executable :git
-        executable :ruby
 
-        TEMPLATE_REPO = "https://github.com/CocoaPods/pod-template.git"
-        TEMPLATE_INFO_URL = "https://github.com/CocoaPods/pod-template"
-        CREATE_NEW_POD_INFO_URL = "http://guides.cocoapods.org/making/making-a-cocoapod"
+        TEMPLATE_REPO = 'https://github.com/CocoaPods/pod-template.git'
+        TEMPLATE_INFO_URL = 'https://github.com/CocoaPods/pod-template'
+        CREATE_NEW_POD_INFO_URL = 'http://guides.cocoapods.org/making/making-a-cocoapod'
 
         # Clones the template from the remote in the working directory using
         # the name of the Pod.
@@ -61,7 +60,7 @@ module Pod
         #
         def clone_template
           UI.section("Cloning `#{template_repo_url}` into `#{@name}`.") do
-            git!"clone '#{template_repo_url}' #{@name}"
+            git! "clone '#{template_repo_url}' #{@name}"
           end
         end
 
@@ -72,10 +71,10 @@ module Pod
         def configure_template
           UI.section("Configuring #{@name} template.") do
             Dir.chdir(@name) do
-              if File.exists? "configure"
-                system "./configure #{@name}"
+              if File.exist?('configure')
+                system("./configure #{@name}")
               else
-                UI.warn "Template does not have a configure file."
+                UI.warn 'Template does not have a configure file.'
               end
             end
           end
@@ -109,11 +108,13 @@ module Pod
         DESC
 
         def self.options
-          [ ["--quick",       "Lint skips checks that would require to download and build the spec"],
-            ["--only-errors", "Lint validates even if warnings are present"],
-            ["--subspec=NAME","Lint validates only the given subspec"],
-            ["--no-subspecs", "Lint skips validation of subspecs"],
-            ["--no-clean",    "Lint leaves the build directory intact for inspection"] ].concat(super)
+          [['--quick',       'Lint skips checks that would require to download and build the spec'],
+           ['--only-errors', 'Lint validates even if warnings are present'],
+           ['--subspec=NAME', 'Lint validates only the given subspec'],
+           ['--no-subspecs', 'Lint skips validation of subspecs'],
+           ['--no-clean',    'Lint leaves the build directory intact for inspection'],
+           ['--sources=https://github.com/artsy/Specs', 'The sources to pull dependant pods from ' \
+            '(defaults to https://github.com/CocoaPods/Specs.git)']].concat(super)
         end
 
         def initialize(argv)
@@ -122,6 +123,7 @@ module Pod
           @clean        = argv.flag?('clean', true)
           @subspecs     = argv.flag?('subspecs', true)
           @only_subspec = argv.option('subspec')
+          @source_urls  = argv.option('sources', 'https://github.com/CocoaPods/Specs.git').split(',')
           @podspecs_paths = argv.arguments!
           super
         end
@@ -134,7 +136,7 @@ module Pod
           UI.puts
           podspecs_to_lint.each do |podspec|
 
-            validator             = Validator.new(podspec)
+            validator             = Validator.new(podspec, @source_urls)
             validator.local       = true
             validator.quick       = @quick
             validator.no_clean    = !@clean
@@ -150,10 +152,13 @@ module Pod
             if validator.validated?
               UI.puts "#{validator.spec.name} passed validation.".green
             else
-              message = "#{validator.spec.name} did not pass validation."
+              spec_name = podspec
+              spec_name = validator.spec.name if validator.spec
+              message = "#{spec_name} did not pass validation."
+
               if @clean
                 message << "\nYou can use the `--no-clean` option to inspect " \
-                  "any issue."
+                  'any issue.'
               end
               raise Informative, message
             end
@@ -173,19 +178,20 @@ module Pod
         # @raise  If multiple podspecs are found.
         #
         def podspecs_to_lint
-          if !@podspecs_paths.empty? then
+          if !@podspecs_paths.empty?
             Array(@podspecs_paths)
-          else 
+          else
             podspecs = Pathname.glob(Pathname.pwd + '*.podspec{.yaml,}')
-            raise Informative, "Unable to find a podspec in the working directory" if podspecs.count.zero?
+            if podspecs.count.zero?
+              raise Informative, 'Unable to find a podspec in the working ' \
+                'directory'
+            end
             podspecs
           end
         end
-
       end
 
       #-----------------------------------------------------------------------#
-
     end
   end
 end

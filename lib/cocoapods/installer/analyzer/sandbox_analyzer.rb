@@ -1,7 +1,6 @@
 module Pod
   class Installer
     class Analyzer
-
       # Analyze the sandbox to detect which Pods should be removed, and which
       # ones should be reinstalled.
       #
@@ -28,7 +27,6 @@ module Pod
       # - If none of the above conditions match.
       #
       class SandboxAnalyzer
-
         # @return [Sandbox] The sandbox to analyze.
         #
         attr_reader :sandbox
@@ -41,6 +39,8 @@ module Pod
         # @return [Bool] Whether the installation is performed in update mode.
         #
         attr_reader :update_mode
+
+        alias_method :update_mode?, :update_mode
 
         # @return [Lockfile] The lockfile of the installation as a fall-back if
         #         there is no sandbox manifest. This is indented as a temporary
@@ -98,7 +98,7 @@ module Pod
           return :added   if pod_added?(pod)
           return :deleted if pod_deleted?(pod)
           return :changed if pod_changed?(pod)
-          return :unchanged
+          :unchanged
         end
 
         # Returns whether the Pod with the given name should be installed.
@@ -112,8 +112,8 @@ module Pod
         #
         def pod_added?(pod)
           return true if resolved_pods.include?(pod) && !sandbox_pods.include?(pod)
-          return true if !folder_exist?(pod)
-          return false
+          return true unless folder_exist?(pod)
+          false
         end
 
         # Returns whether the Pod with the given name should be removed from
@@ -126,7 +126,7 @@ module Pod
         #
         def pod_deleted?(pod)
           return true if !resolved_pods.include?(pod) && sandbox_pods.include?(pod)
-          return false
+          false
         end
 
         # Returns whether the Pod with the given name should be considered
@@ -154,7 +154,7 @@ module Pod
           if update_mode
             return true if sandbox.head_pod?(pod)
           end
-          return false
+          false
         end
 
         #---------------------------------------------------------------------#
@@ -254,7 +254,6 @@ module Pod
         end
 
         #---------------------------------------------------------------------#
-
       end
     end
   end

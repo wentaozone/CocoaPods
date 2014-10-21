@@ -1,10 +1,8 @@
 module Pod
   module ExternalSources
-
     # Abstract class that defines the common behaviour of external sources.
     #
     class AbstractExternalSource
-
       # @return [String] the name of the Pod described by this external source.
       #
       attr_reader :name
@@ -48,14 +46,14 @@ module Pod
       #
       # @return [void]
       #
-      def fetch(sandbox)
-        raise "Abstract method"
+      def fetch(_sandbox)
+        raise 'Abstract method'
       end
 
       # @return [String] a string representation of the source suitable for UI.
       #
       def description
-        raise "Abstract method"
+        raise 'Abstract method'
       end
 
       protected
@@ -98,12 +96,20 @@ module Pod
       #
       def pre_download(sandbox)
         title = "Pre-downloading: `#{name}` #{description}"
-        UI.titled_section(title, { :verbose_prefix => "-> " }) do
-          target = sandbox.root + name
+        UI.titled_section(title,  :verbose_prefix => '-> ') do
+          target = sandbox.pod_dir(name)
           target.rmtree if target.exist?
-          downloader = Config.instance.downloader(target, params)
+          downloader = Downloader.for_target(target, params)
           downloader.download
-          store_podspec(sandbox, target + "#{name}.podspec")
+
+          podspec_path = target + "#{name}.podspec"
+          json = false
+          unless Pathname(podspec_path).exist?
+            podspec_path = target + "#{name}.podspec.json"
+            json = true
+          end
+
+          store_podspec(sandbox, target + podspec_path, json)
           sandbox.store_pre_downloaded_pod(name)
           if downloader.options_specific?
             source = params
@@ -137,4 +143,3 @@ module Pod
     end
   end
 end
-

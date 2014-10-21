@@ -1,9 +1,7 @@
 module Pod
-
   # Stores the global configuration of CocoaPods.
   #
   class Config
-
     # The default settings for the configuration.
     #
     # Users can specify custom settings in `~/.cocoapods/config.yaml`.
@@ -23,8 +21,6 @@ module Pod
       :new_version_message => true,
 
       :cache_root          => Pathname.new(File.join(ENV['HOME'], 'Library/Caches/CocoaPods')),
-      :max_cache_size      => 500,
-      :aggressive_cache    => false,
     }
 
     public
@@ -37,18 +33,18 @@ module Pod
     #         performed actions.
     #
     attr_accessor :verbose
-    alias_method  :verbose?, :verbose
+    alias_method :verbose?, :verbose
 
     # @return [Bool] Whether CocoaPods should produce not output.
     #
     attr_accessor :silent
-    alias_method  :silent?, :silent
+    alias_method :silent?, :silent
 
     # @return [Bool] Whether a message should be printed when a new version of
     #         CocoaPods is available.
     #
     attr_accessor :new_version_message
-    alias_method  :new_version_message?, :new_version_message
+    alias_method :new_version_message?, :new_version_message
 
     #-------------------------------------------------------------------------#
 
@@ -57,29 +53,24 @@ module Pod
     # @return [Bool] Whether the installer should clean after the installation.
     #
     attr_accessor :clean
-    alias_method  :clean?, :clean
+    alias_method :clean?, :clean
 
     # @return [Bool] Whether CocoaPods should integrate a user target and build
     #         the workspace or just create the Pods project.
     #
     attr_accessor :integrate_targets
-    alias_method  :integrate_targets?, :integrate_targets
-
+    alias_method :integrate_targets?, :integrate_targets
 
     # @return [Bool] Whether the installer should skip the repos update.
     #
     attr_accessor :skip_repo_update
-    alias_method  :skip_repo_update?, :skip_repo_update
+    alias_method :skip_repo_update?, :skip_repo_update
 
     public
 
     #-------------------------------------------------------------------------#
 
     # @!group Cache
-
-    # @return [Fixnum] The maximum size for the cache expressed in Mb.
-    #
-    attr_accessor :max_cache_size
 
     # @return [Pathname] The directory where CocoaPods should cache remote data
     #         and other expensive to compute information.
@@ -89,21 +80,6 @@ module Pod
     def cache_root
       @cache_root.mkpath unless @cache_root.exist?
       @cache_root
-    end
-
-    # Allows to set whether the downloader should use more aggressive caching
-    # options.
-    #
-    # @note The aggressive cache has lead to issues if a tag is updated to
-    #       point to another commit.
-    #
-    attr_writer :aggressive_cache
-
-    # @return [Bool] Whether the downloader should use more aggressive caching
-    #         options.
-    #
-    def aggressive_cache?
-      @aggressive_cache || (ENV['CP_AGGRESSIVE_CACHE'] == 'TRUE')
     end
 
     public
@@ -136,13 +112,13 @@ module Pod
     #         files are stored.
     #
     def home_dir
-      @home_dir ||= Pathname.new(ENV['CP_HOME_DIR'] || "~/.cocoapods").expand_path
+      @home_dir ||= Pathname.new(ENV['CP_HOME_DIR'] || '~/.cocoapods').expand_path
     end
 
     # @return [Pathname] the directory where the CocoaPods sources are stored.
     #
     def repos_dir
-      @repos_dir ||= Pathname.new(ENV['CP_REPOS_DIR'] || "~/.cocoapods/repos").expand_path
+      @repos_dir ||= Pathname.new(ENV['CP_REPOS_DIR'] || '~/.cocoapods/repos').expand_path
     end
 
     attr_writer :repos_dir
@@ -150,7 +126,7 @@ module Pod
     # @return [Pathname] the directory where the CocoaPods templates are stored.
     #
     def templates_dir
-      @templates_dir ||= Pathname.new(ENV['CP_TEMPLATES_DIR'] || "~/.cocoapods/templates").expand_path
+      @templates_dir ||= Pathname.new(ENV['CP_TEMPLATES_DIR'] || '~/.cocoapods/templates').expand_path
     end
 
     # @return [Pathname] the root of the CocoaPods installation where the
@@ -159,7 +135,7 @@ module Pod
     def installation_root
       current_path = Pathname.pwd
       unless @installation_root
-        while(!current_path.root?)
+        until current_path.root?
           if podfile_path_in_dir(current_path)
             @installation_root = current_path
             unless current_path == Pathname.pwd
@@ -176,7 +152,7 @@ module Pod
     end
 
     attr_writer :installation_root
-    alias :project_root :installation_root
+    alias_method :project_root, :installation_root
 
     # @return [Pathname] The root of the sandbox.
     #
@@ -185,7 +161,7 @@ module Pod
     end
 
     attr_writer :sandbox_root
-    alias :project_pods_root :sandbox_root
+    alias_method :project_pods_root, :sandbox_root
 
     # @return [Sandbox] The sandbox of the current project.
     #
@@ -236,7 +212,7 @@ module Pod
     # @return [Pathname]
     #
     def default_podfile_path
-      @default_podfile_path ||= templates_dir + "Podfile.default"
+      @default_podfile_path ||= templates_dir + 'Podfile.default'
     end
 
     # Returns the path of the default Podfile test pods.
@@ -246,7 +222,7 @@ module Pod
     # @return [Pathname]
     #
     def default_test_podfile_path
-      @default_test_podfile_path ||= templates_dir + "Podfile.test"
+      @default_test_podfile_path ||= templates_dir + 'Podfile.test'
     end
 
     # @return [Pathname] The file to use a cache of the statistics provider.
@@ -255,7 +231,7 @@ module Pod
       cache_root + 'statistics.yml'
     end
 
-   # @return [Pathname] The file to use to cache the search data.
+    # @return [Pathname] The file to use to cache the search data.
     #
     def search_index_file
       cache_root + 'search_index.yaml'
@@ -266,17 +242,6 @@ module Pod
     #-------------------------------------------------------------------------#
 
     # @!group Dependency Injection
-
-    # @return [Downloader] The downloader to use for the retrieving remote
-    #         source.
-    #
-    def downloader(target_path, options)
-      downloader = Downloader.for_target(target_path, options)
-      downloader.cache_root = cache_root
-      downloader.max_cache_size = max_cache_size
-      downloader.aggressive_cache = aggressive_cache?
-      downloader
-    end
 
     # @return [Specification::Set::Statistics] The statistic provider to use
     #         for specifications.
@@ -294,7 +259,7 @@ module Pod
     # @return [Pathname] The path of the file which contains the user settings.
     #
     def user_settings_file
-      home_dir + "config.yaml"
+      home_dir + 'config.yaml'
     end
 
     # Sets the values of the attributes with the given hash.
@@ -307,7 +272,7 @@ module Pod
     def configure_with(values_by_key)
       return unless values_by_key
       values_by_key.each do |key, value|
-        self.instance_variable_set("@#{key}", value)
+        instance_variable_set("@#{key}", value)
       end
     end
 
@@ -319,6 +284,8 @@ module Pod
       'CocoaPods.podfile',
       'Podfile',
     ]
+
+    public
 
     # Returns the path of the Podfile in the given dir if any exists.
     #
@@ -357,8 +324,8 @@ module Pod
     #
     # @return [void]
     #
-    def self.instance=(instance)
-      @instance = instance
+    class << self
+      attr_writer :instance
     end
 
     # Provides support for accessing the configuration instance in other

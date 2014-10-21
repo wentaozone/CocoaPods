@@ -1,7 +1,6 @@
 module Pod
   class Command
     class IPC < Command
-
       self.abstract_command = true
       self.summary = 'Inter-process communication'
 
@@ -12,11 +11,10 @@ module Pod
       #-----------------------------------------------------------------------#
 
       class Spec < IPC
-
         self.summary = 'Converts a podspec to JSON.'
         self.description = 'Converts a podspec to JSON and prints it to STDOUT.'
         self.arguments = [
-            CLAide::Argument.new('PATH', true)
+          CLAide::Argument.new('PATH', true),
         ]
 
         def initialize(argv)
@@ -26,24 +24,23 @@ module Pod
 
         def validate!
           super
-          help! "A specification path is required." unless @path
+          help! 'A specification path is required.' unless @path
         end
 
         def run
+          require 'json'
           spec = Specification.from_file(@path)
-          output_pipe.puts spec.to_json
+          output_pipe.puts(JSON.pretty_generate(spec))
         end
-
       end
 
       #-----------------------------------------------------------------------#
 
       class Podfile < IPC
-
         self.summary = 'Converts a Podfile to YAML.'
         self.description = 'Converts a Podfile to YAML and prints it to STDOUT.'
         self.arguments = [
-            CLAide::Argument.new('PATH', true)
+          CLAide::Argument.new('PATH', true),
         ]
 
         def initialize(argv)
@@ -53,20 +50,18 @@ module Pod
 
         def validate!
           super
-          help! "A Podfile path is required." unless @path
+          help! 'A Podfile path is required.' unless @path
         end
 
         def run
           podfile = Pod::Podfile.from_file(@path)
           output_pipe.puts podfile.to_yaml
         end
-
       end
 
       #-----------------------------------------------------------------------#
 
       class List < IPC
-
         self.summary = 'Lists the specifications known to CocoaPods.'
         self.description = <<-DESC
           Prints to STDOUT a YAML dictionary where the keys are the name of the
@@ -82,7 +77,7 @@ module Pod
         DESC
 
         def run
-          sets = SourcesManager.all_sets
+          sets = SourcesManager.aggregate.all_sets
           result = {}
           sets.each do |set|
             begin
@@ -99,13 +94,11 @@ module Pod
           end
           output_pipe.puts result.to_yaml
         end
-
       end
 
       #-----------------------------------------------------------------------#
 
       class UpdateSearchIndex < IPC
-
         self.summary = 'Updates the search index.'
         self.description = <<-DESC
           Updates the search index and prints its path to standard output.
@@ -123,13 +116,11 @@ module Pod
           SourcesManager.updated_search_index
           output_pipe.puts(SourcesManager.search_index_path)
         end
-
       end
 
       #-----------------------------------------------------------------------#
 
       class Repl < IPC
-
         END_OF_OUTPUT_SIGNAL = "\n\r"
 
         self.summary = 'The repl listens to commands on standard input.'
@@ -172,11 +163,9 @@ module Pod
             signal_end_of_output
           end
         end
-
       end
 
       #-----------------------------------------------------------------------#
-
     end
   end
 end

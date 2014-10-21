@@ -35,17 +35,18 @@ module Pod
     end
   end
 
+  autoload :AggregateTarget,           'cocoapods/target/aggregate_target'
   autoload :Command,                   'cocoapods/command'
   autoload :Executable,                'cocoapods/executable'
   autoload :ExternalSources,           'cocoapods/external_sources'
   autoload :Installer,                 'cocoapods/installer'
-  autoload :SourcesManager,            'cocoapods/sources_manager'
-  autoload :Target,                    'cocoapods/target'
-  autoload :AggregateTarget,           'cocoapods/target/aggregate_target'
+  autoload :HooksManager,              'cocoapods/hooks_manager'
   autoload :PodTarget,                 'cocoapods/target/pod_target'
   autoload :Project,                   'cocoapods/project'
   autoload :Resolver,                  'cocoapods/resolver'
   autoload :Sandbox,                   'cocoapods/sandbox'
+  autoload :SourcesManager,            'cocoapods/sources_manager'
+  autoload :Target,                    'cocoapods/target'
   autoload :Validator,                 'cocoapods/validator'
 
   module Generator
@@ -65,7 +66,6 @@ module Pod
     autoload :LibraryRepresentation,   'cocoapods/hooks/library_representation'
     autoload :PodRepresentation,       'cocoapods/hooks/pod_representation'
   end
-
 end
 
 if ENV['COCOA_PODS_ENV'] == 'development'

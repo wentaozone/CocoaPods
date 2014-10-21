@@ -1,11 +1,9 @@
 module Pod
   class Installer
-
     # Analyzes the Podfile, the Lockfile, and the sandbox manifest to generate
     # the information relative to a CocoaPods installation.
     #
     class Analyzer
-
       include Config::Mixin
 
       autoload :SandboxAnalyzer, 'cocoapods/installer/analyzer/sandbox_analyzer'
@@ -49,10 +47,10 @@ module Pod
       def analyze(allow_fetches = true)
         update_repositories_if_needed if allow_fetches
         @result = AnalysisResult.new
+        compute_target_platforms
         @result.podfile_state = generate_podfile_state
         @locked_dependencies  = generate_version_locking_dependencies
 
-        compute_target_platforms
         fetch_external_sources if allow_fetches
         @result.specs_by_target = resolve_dependencies
         @result.specifications  = generate_specifications
@@ -96,7 +94,7 @@ module Pod
       #
       attr_accessor :update
 
-      # @return [Bool] Whether the version of the dependencies which did non
+      # @return [Bool] Whether the version of the dependencies which did not
       #         change in the Podfile should be locked.
       #
       def update_mode?
@@ -111,7 +109,7 @@ module Pod
           :none
         elsif update == true
           :all
-        elsif update[:pods] != nil
+        elsif !update[:pods].nil?
           :selected
         end
       end
@@ -125,7 +123,7 @@ module Pod
       #         modification of the sandbox in the resolution process.
       #
       attr_accessor :allow_pre_downloads
-      alias_method  :allow_pre_downloads?, :allow_pre_downloads
+      alias_method :allow_pre_downloads?, :allow_pre_downloads
 
       #-----------------------------------------------------------------------#
 
@@ -149,10 +147,11 @@ module Pod
       def generate_podfile_state
         if lockfile
           pods_state = nil
-          UI.section "Finding Podfile changes" do
+          UI.section 'Finding Podfile changes' do
             pods_by_state = lockfile.detect_changes_with_podfile(podfile)
             pods_by_state.dup.each do |state, full_names|
-              pods_by_state[state] = full_names.map { |fn| Specification.root_name(fn) }
+              pods = full_names.map { |fn| Specification.root_name(fn) }.uniq
+              pods_by_state[state] = pods
             end
             pods_state = SpecsState.new(pods_by_state)
             pods_state.print
@@ -167,12 +166,10 @@ module Pod
 
       # Updates the source repositories unless the config indicates to skip it.
       #
-      # @return [void]
-      #
       def update_repositories_if_needed
         unless config.skip_repo_update?
           UI.section 'Updating spec repositories' do
-            SourcesManager.update
+            sources.each { |source| SourcesManager.update(source.name) }
           end
         end
       end
@@ -200,7 +197,7 @@ module Pod
           else
             target.client_root = config.installation_root
             target.user_target_uuids = []
-            target.user_build_configurations = {}
+            target.user_build_configurations = target_definition.build_configurations || {}
             if target_definition.platform.name == :osx
               target.archs = '$(ARCHS_STANDARD_64_BIT)'
             end
@@ -212,15 +209,15 @@ module Pod
 
           grouped_specs.each do |pod_specs|
             pod_target = PodTarget.new(pod_specs, target_definition, sandbox)
-          if config.integrate_targets?
-            pod_target.user_build_configurations = target.user_build_configurations
-            pod_target.archs = @archs_by_target_def[target_definition]
-          else
-            pod_target.user_build_configurations = {}
-            if target_definition.platform.name == :osx
-              pod_target.archs = '$(ARCHS_STANDARD_64_BIT)'
+            if config.integrate_targets?
+              pod_target.user_build_configurations = target.user_build_configurations
+              pod_target.archs = @archs_by_target_def[target_definition]
+            else
+              pod_target.user_build_configurations = {}
+              if target_definition.platform.name == :osx
+                pod_target.archs = '$(ARCHS_STANDARD_64_BIT)'
+              end
             end
-          end
             target.pod_targets << pod_target
           end
         end
@@ -247,8 +244,8 @@ module Pod
             locking_pods = locking_pods.select { |pod| !update[:pods].include?(pod) }
           end
           locking_pods.map do |pod|
-            lockfile.dependency_to_lock_pod_named(pod)
-          end
+            lockfile.dependencies_to_lock_pod_named(pod)
+          end.flatten
         end
       end
 
@@ -275,7 +272,7 @@ module Pod
         return unless allow_pre_downloads?
         deps_to_fetch = []
         deps_to_fetch_if_needed = []
-        deps_with_external_source = podfile.dependencies.select { |dep| dep.external_source }
+        deps_with_external_source = podfile.dependencies.select(&:external_source)
 
         if update_mode == :all
           deps_to_fetch = deps_with_external_source
@@ -286,11 +283,11 @@ module Pod
           end
           deps_to_fetch = deps_with_external_source.select { |dep| pods_to_fetch.include?(dep.root_name) }
           deps_to_fetch_if_needed = deps_with_external_source.select { |dep| result.podfile_state.unchanged.include?(dep.root_name) }
-          deps_to_fetch += deps_to_fetch_if_needed.select { |dep| sandbox.specification(dep.root_name).nil? || !dep.external_source[:local].nil? || !dep.external_source[:path].nil? }
+          deps_to_fetch += deps_to_fetch_if_needed.select { |dep| sandbox.specification(dep.root_name).nil? || !dep.external_source[:local].nil? || !dep.external_source[:path].nil? || !sandbox.pod_dir(dep.root_name).directory? }
         end
 
         unless deps_to_fetch.empty?
-          UI.section "Fetching external sources" do
+          UI.section 'Fetching external sources' do
             deps_to_fetch.uniq.sort.each do |dependency|
               source = ExternalSources.from_dependency(dependency, podfile.defined_in_file)
               source.fetch(sandbox)
@@ -321,7 +318,7 @@ module Pod
       def resolve_dependencies
         specs_by_target = nil
         UI.section "Resolving dependencies of #{UI.path podfile.defined_in_file}" do
-          resolver = Resolver.new(sandbox, podfile, locked_dependencies)
+          resolver = Resolver.new(sandbox, podfile, locked_dependencies, sources)
           specs_by_target = resolver.resolve
         end
         specs_by_target
@@ -343,7 +340,7 @@ module Pod
       #
       def generate_sandbox_state
         sandbox_state = nil
-        UI.section "Comparing resolved specification to the sandbox manifest" do
+        UI.section 'Comparing resolved specification to the sandbox manifest' do
           sandbox_analyzer = SandboxAnalyzer.new(sandbox, result.specifications, update_mode?, lockfile)
           sandbox_state = sandbox_analyzer.analyze
           sandbox_state.print
@@ -359,6 +356,37 @@ module Pod
       #         that prevent the resolver to update a Pod.
       #
       attr_reader :locked_dependencies
+
+      #-----------------------------------------------------------------------#
+
+      public
+
+      # Returns the sources used to query for specifications
+      #
+      # @note Currently, this defaults to {SourcesManager.all} when no
+      #       Podfile sources are defined, but this implicit declaration of
+      #       sources is deprecated.
+      #
+      # @return [Array<Source>] the sources to be used in finding
+      #         specifications, as specified by the {#podfile}.
+      #
+      def sources
+        @sources ||= begin
+          sources = podfile.sources
+          if sources.empty?
+            SourcesManager.all.tap do |all|
+              UI.warn all.reduce("The use of implicit sources has been " \
+                "deprecated. To continue using all of the sources currently " \
+                "on your machine, add the following to the top of your " \
+                "Podfile:\n") { |w, s| w << "\n    source '#{s.url}'" } + "\n"
+            end
+          else
+            sources.map do |url|
+              SourcesManager.find_or_create_source_with_url(url)
+            end
+          end
+        end
+      end
 
       #-----------------------------------------------------------------------#
 
@@ -381,7 +409,7 @@ module Pod
           path = "#{path}.xcodeproj" unless File.extname(path) == '.xcodeproj'
           path = Pathname.new(path)
           unless path.exist?
-            raise Informative, "Unable to find the Xcode project " \
+            raise Informative, 'Unable to find the Xcode project ' \
               "`#{path}` for the target `#{target_definition.label}`."
           end
 
@@ -390,7 +418,7 @@ module Pod
           if xcodeprojs.size == 1
             path = xcodeprojs.first
           else
-            raise Informative, "Could not automatically select an Xcode project. " \
+            raise Informative, 'Could not automatically select an Xcode project. ' \
               "Specify one in your Podfile like so:\n\n" \
               "    xcodeproj 'path/to/Project.xcodeproj'\n"
           end
@@ -417,12 +445,12 @@ module Pod
           targets = native_targets(user_project).select { |t| link_with.include?(t.name) }
           raise Informative, "Unable to find the targets named `#{link_with.to_sentence}` to link with target definition `#{target_definition.name}`" if targets.empty?
         elsif target_definition.link_with_first_target?
-          targets = [ native_targets(user_project).first ].compact
-          raise Informative, "Unable to find a target" if targets.empty?
+          targets = [native_targets(user_project).first].compact
+          raise Informative, 'Unable to find a target' if targets.empty?
         else
           target = native_targets(user_project).find { |t| t.name == target_definition.name.to_s }
-          targets = [ target ].compact
-          raise Informative, "Unable to find a target named `#{target_definition.name.to_s}`" if targets.empty?
+          targets = [target].compact
+          raise Informative, "Unable to find a target named `#{target_definition.name}`" if targets.empty?
         end
         targets
       end
@@ -442,10 +470,8 @@ module Pod
       #
       def compute_user_build_configurations(target_definition, user_targets)
         if user_targets
-          user_targets.map { |t| t.build_configurations.map(&:name) }.flatten.inject({}) do |hash, name|
-            unless name == 'Debug' || name == 'Release'
-              hash[name] = :release
-            end
+          user_targets.map { |t| t.build_configurations.map(&:name) }.flatten.reduce({}) do |hash, name|
+            hash[name] = name == 'Debug' ? :debug : :release
             hash
           end.merge(target_definition.build_configurations || {})
         else
@@ -468,7 +494,7 @@ module Pod
 
         user_targets.each do |target|
           name ||= target.platform_name
-          raise Informative, "Targets with different platforms" unless name == target.platform_name
+          raise Informative, 'Targets with different platforms' unless name == target.platform_name
           if !deployment_target || deployment_target > Version.new(target.deployment_target)
             deployment_target = Version.new(target.deployment_target)
           end
@@ -494,12 +520,10 @@ module Pod
         end
 
         archs = archs.compact.uniq.sort
-        if archs.count > 1
-          UI.warn "Found multiple values (`#{archs.join('`, `')}`) for the " \
-          "architectures (`ARCHS`) build setting for the " \
-          "`#{target_definition}` target definition. Using the first."
-        end
-        archs.first
+        UI.message("Using `ARCHS` setting to build architectures of " \
+                   "target `#{target_definition.label}`: " \
+                   "(`#{archs.join('`, `')}`)")
+        archs.length > 1 ? archs : archs.first
       end
 
       # Precompute the platforms for each target_definition in the Podfile
@@ -511,17 +535,19 @@ module Pod
       # @return [void]
       #
       def compute_target_platforms
-        podfile.target_definition_list.each do |target_definition|
-          if config.integrate_targets?
-            project_path = compute_user_project_path(target_definition)
-            user_project = Xcodeproj::Project.open(project_path)
-            targets = compute_user_project_targets(target_definition, user_project)
-            platform = compute_platform_for_target_definition(target_definition, targets)
-            archs = compute_archs_for_target_definition(target_definition, targets)
-            @archs_by_target_def[target_definition] = archs
-          else
-            unless target_definition.platform
-              raise Informative, "It is necessary to specify the platform in the Podfile if not integrating."
+        UI.section 'Inspecting targets to integrate' do
+          podfile.target_definition_list.each do |target_definition|
+            if config.integrate_targets?
+              project_path = compute_user_project_path(target_definition)
+              user_project = Xcodeproj::Project.open(project_path)
+              targets = compute_user_project_targets(target_definition, user_project)
+              platform = compute_platform_for_target_definition(target_definition, targets)
+              archs = compute_archs_for_target_definition(target_definition, targets)
+              @archs_by_target_def[target_definition] = archs
+            else
+              unless target_definition.platform
+                raise Informative, 'It is necessary to specify the platform in the Podfile if not integrating.'
+              end
             end
           end
         end
@@ -530,7 +556,6 @@ module Pod
       #-----------------------------------------------------------------------#
 
       class AnalysisResult
-
         # @return [SpecsState] the states of the Podfile specs.
         #
         attr_accessor :podfile_state
@@ -561,7 +586,7 @@ module Pod
         #         its type (`:debug` or `:release`).
         #
         def all_user_build_configurations
-          targets.inject({}) do |result, target|
+          targets.reduce({}) do |result, target|
             result.merge(target.user_build_configurations)
           end
         end
@@ -578,7 +603,6 @@ module Pod
       #       subspecs are added instead of the name of the Pods.
       #
       class SpecsState
-
         # @param  [Hash{Symbol=>String}] pods_by_state
         #         The **root** name of the pods grouped by their state
         #         (`:added`, `:removed`, `:changed` or `:unchanged`).
@@ -618,10 +642,10 @@ module Pod
         # @return [void]
         #
         def print
-          added    .sort.each { |pod| UI.message("A".green  + " #{pod}", '', 2) }
-          deleted  .sort.each { |pod| UI.message("R".red    + " #{pod}", '', 2) }
-          changed  .sort.each { |pod| UI.message("M".yellow + " #{pod}", '', 2) }
-          unchanged.sort.each { |pod| UI.message("-"        + " #{pod}", '', 2) }
+          added    .sort.each { |pod| UI.message('A'.green  + " #{pod}", '', 2) }
+          deleted  .sort.each { |pod| UI.message('R'.red    + " #{pod}", '', 2) }
+          changed  .sort.each { |pod| UI.message('M'.yellow + " #{pod}", '', 2) }
+          unchanged.sort.each { |pod| UI.message('-'        + " #{pod}", '', 2) }
         end
 
         # Adds the name of a Pod to the give state.
@@ -637,10 +661,9 @@ module Pod
         # @return [void]
         #
         def add_name(name, state)
-          raise "[Bug] Attempt to add subspec to the pods state" if name.include?('/')
-          self.send(state) << name
+          raise '[Bug] Attempt to add subspec to the pods state' if name.include?('/')
+          send(state) << name
         end
-
       end
     end
   end

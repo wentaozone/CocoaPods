@@ -2,14 +2,12 @@ require 'active_support/core_ext/string/strip'
 
 module Pod
   class Installer
-
     # Controller class responsible of installing the activated specifications
     # of a single Pod.
     #
     # @note This class needs to consider all the activated specs of a Pod.
     #
     class PodSourceInstaller
-
       # @return [Sandbox]
       #
       attr_reader :sandbox
@@ -25,8 +23,6 @@ module Pod
       def initialize(sandbox, specs_by_platform)
         @sandbox = sandbox
         @specs_by_platform = specs_by_platform
-
-        @aggressive_cache = false
       end
 
       # @return [String] A string suitable for debugging.
@@ -34,21 +30,6 @@ module Pod
       def inspect
         "<#{self.class} sandbox=#{sandbox.root} pod=#{root_spec.name}"
       end
-
-      #-----------------------------------------------------------------------#
-
-      public
-
-      # @!group Configuration
-
-      # @return [Bool] whether the downloader should always check against the
-      #         remote if issues might be generated (mostly useful to speed up
-      #         testing).
-      #
-      # @note   This might be removed in future.
-      #
-      attr_accessor :aggressive_cache
-      alias_method  :aggressive_cache?, :aggressive_cache
 
       #-----------------------------------------------------------------------#
 
@@ -79,7 +60,7 @@ module Pod
       # @return [void]
       #
       def clean!
-        clean_installation  if !local?
+        clean_installation  unless local?
       end
 
       # @return [Hash]
@@ -106,9 +87,9 @@ module Pod
             @specific_source = downloader.checkout_options
           rescue RuntimeError => e
             if e.message == 'Abstract method'
-              raise Informative, "The pod '" + root_spec.name + "' does not " + 
-                "support the :head option, as it uses a " + downloader.name + 
-                " source. Remove that option to use this pod."
+              raise Informative, "The pod '" + root_spec.name + "' does not " \
+                'support the :head option, as it uses a ' + downloader.name +
+                ' source. Remove that option to use this pod.'
             else
               raise
             end
@@ -121,7 +102,7 @@ module Pod
         end
 
         if specific_source
-        sandbox.store_checkout_source(root_spec.name, specific_source)
+          sandbox.store_checkout_source(root_spec.name, specific_source)
         end
       end
 
@@ -138,7 +119,7 @@ module Pod
       #
       def run_prepare_command
         return unless root_spec.prepare_command
-        UI.section(" > Running prepare command", '', 1) do
+        UI.section(' > Running prepare command', '', 1) do
           Dir.chdir(root) do
             ENV.delete('CDPATH')
             prepare_command = root_spec.prepare_command.strip_heredoc.chomp
@@ -167,7 +148,7 @@ module Pod
       #         source.
       #
       def downloader
-        @downloader ||= Config.instance.downloader(root, root_spec.source.dup)
+        @downloader ||= Downloader.for_target(root, root_spec.source.dup)
       end
 
       #-----------------------------------------------------------------------#
@@ -254,7 +235,7 @@ module Pod
       def clean_paths
         cached_used = used_files
         glob_options = File::FNM_DOTMATCH | File::FNM_CASEFOLD
-        files = Pathname.glob(root + "**/*", glob_options).map(&:to_s)
+        files = Pathname.glob(root + '**/*', glob_options).map(&:to_s)
 
         files.reject! do |candidate|
           candidate = candidate.downcase
@@ -282,11 +263,10 @@ module Pod
           file_accessors.map(&:source_files),
         ]
 
-        files.flatten.compact.map{ |path| path.to_s }.uniq
+        files.flatten.compact.map(&:to_s).uniq
       end
 
       #-----------------------------------------------------------------------#
-
     end
   end
 end

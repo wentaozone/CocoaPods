@@ -4,17 +4,21 @@ module Pod
   describe Command::Outdated do
     extend SpecHelper::TemporaryRepos
 
-    it "tells the user that no Podfile was found in the current working dir" do
-      exception = lambda { run_command('outdated', '--no-repo-update') }.should.raise Informative
-      exception.message.should.include "No `Podfile' found in the current working directory."
+    before do
+      Command::Outdated.any_instance.stubs(:unlocked_pods).returns([])
     end
 
-    it "tells the user that no Lockfile was found in the current working dir" do
+    it 'tells the user that no Podfile was found in the project dir' do
+      exception = lambda { run_command('outdated', '--no-repo-update') }.should.raise Informative
+      exception.message.should.include "No `Podfile' found in the project directory."
+    end
+
+    it 'tells the user that no Lockfile was found in the project dir' do
       file = temporary_directory + 'Podfile'
-      File.open(file, 'w') {|f| f.write('platform :ios') }
+      File.open(file, 'w') { |f| f.write('platform :ios') }
       Dir.chdir(temporary_directory) do
         exception = lambda { run_command('outdated', '--no-repo-update') }.should.raise Informative
-        exception.message.should.include "No `Podfile.lock' found in the current working directory"
+        exception.message.should.include "No `Podfile.lock' found in the project directory"
       end
     end
 
@@ -45,4 +49,3 @@ module Pod
     end
   end
 end
-

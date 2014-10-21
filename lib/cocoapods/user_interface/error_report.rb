@@ -8,7 +8,7 @@ module Pod
     module ErrorReport
       class << self
         def report(exception)
-          return <<-EOS
+          <<-EOS
 
 #{'――― MARKDOWN TEMPLATE ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――'.reversed}
 
@@ -29,8 +29,15 @@ module Pod
     RubyGems : #{Gem::VERSION}
         Host : #{host_information}
        Xcode : #{xcode_information}
+         Git : #{git_information}
 Ruby lib dir : #{RbConfig::CONFIG['libdir']}
 Repositories : #{repo_information.join("\n               ")}
+```
+
+### Plugins
+
+```
+#{plugins_string}
 ```
 #{markdown_podfile}
 ### Error
@@ -75,7 +82,7 @@ EOS
 
         def error_from_podfile(error)
           if error.message =~ /Podfile:(\d*)/
-            "\nIt appears to have originated from your Podfile at line #{$1}.\n"
+            "\nIt appears to have originated from your Podfile at line #{Regexp.last_match[1]}.\n"
           end
         end
 
@@ -90,19 +97,36 @@ EOS
         end
 
         def host_information
-          product, version, build =`sw_vers`.strip.split("\n").map { |line| line.split(":").last.strip }
+          product, version, build = `sw_vers`.strip.split("\n").map { |line| line.split(':').last.strip }
           "#{product} #{version} (#{build})"
         end
 
         def xcode_information
-          version, build = `xcodebuild -version`.strip.split("\n").map { |line| line.split(" ").last }
+          version, build = `xcodebuild -version`.strip.split("\n").map { |line| line.split(' ').last }
           "#{version} (#{build})"
+        end
+
+        def git_information
+          `git --version`.strip.split("\n").first
+        end
+
+        def installed_plugins
+          CLAide::Command::PluginsHelper.specifications.
+            reduce({}) { |hash, s| hash.tap { |h| h[s.name] = s.version.to_s } }
+        end
+
+        def plugins_string
+          plugins = installed_plugins
+          max_name_length = plugins.keys.map(&:length).max
+          plugins.map do |name, version|
+            "#{name.ljust(max_name_length)} : #{version}"
+          end.sort.join("\n")
         end
 
         def repo_information
           SourcesManager.all.map do |source|
             next unless source.type == 'file system'
-            repo = source.data_provider.repo
+            repo = source.repo
             Dir.chdir(repo) do
               url = `git config --get remote.origin.url 2>&1`.strip
               sha = `git rev-parse HEAD 2>&1`.strip

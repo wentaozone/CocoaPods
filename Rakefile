@@ -1,8 +1,22 @@
+REQUIRED_COMMANDS = %w[ git hg ]
+
+# Task check_requirements
+#-----------------------------------------------------------------------------#
+desc 'Verifies that the required third-party commands are available'
+task :check_requirements do
+  has_all_requirements = REQUIRED_COMMANDS.inject(true) do |has_requirements, required_command|
+    result = has_required_binary?(required_command)
+    puts red("Missing required command: #{required_command}. You may need to install it.") unless result
+    has_requirements && result
+  end
+  raise unless has_all_requirements
+end
+
 # Bootstrap task
 #-----------------------------------------------------------------------------#
 
 desc "Initializes your working copy to run the specs"
-task :bootstrap, :use_bundle_dir? do |t, args|
+task :bootstrap, [:use_bundle_dir?] => [:check_requirements] do |t, args|
   title "Environment bootstrap"
 
   puts "Updating submodules"
@@ -42,6 +56,16 @@ begin
   end
 
   require "bundler/gem_tasks"
+
+  # Pre release
+  #-----------------------------------------------------------------------------#
+
+  desc "Prepares for a release"
+  task :pre_release do
+    unless File.exist?('../Specs')
+      raise 'Ensure that the specs repo exits in the `../Specs` location'
+    end
+  end
 
   # Post release
   #-----------------------------------------------------------------------------#
@@ -113,7 +137,7 @@ begin
     #--------------------------------------#
 
     desc "Run the integration spec"
-    task :integration do
+    task :integration => :check_requirements do
       unless File.exists?('spec/cocoapods-integration-specs')
         $stderr.puts red("Integration files not checked out. Run `rake bootstrap`")
         exit 1
@@ -128,7 +152,7 @@ begin
     # The specs helper interfere with the integration 2 specs and thus they need
     # to be run separately.
     #
-    task :all => :unpack_fixture_tarballs do
+    task :all => [:unpack_fixture_tarballs, :check_requirements] do
       ENV['GENERATE_COVERAGE'] = 'true'
       puts "\033[0;32mUsing #{`ruby --version`}\033[0m"
 
@@ -140,6 +164,9 @@ begin
 
       title 'Running examples'
       Rake::Task['examples:build'].invoke
+
+      title 'Running RuboCop'
+      Rake::Task['rubocop'].invoke if RUBY_VERSION >= '1.9.3'
     end
 
     desc "Rebuild all the fixture tarballs"
@@ -185,7 +212,7 @@ begin
 
       # Remove files not used for the comparison
       # To keep the git diff clean
-      files_to_delete = FileList['spec/cocoapods-integration-specs/*/after/{Podfile,*.podspec,**/*.xcodeproj,PodTest-hg-source}']
+      files_to_delete = FileList['spec/cocoapods-integration-specs/*/after/{Podfile,*.podspec,**/*.xcodeproj,PodTest-hg-source}', '.DS_Store']
       files_to_delete.exclude('/spec/cocoapods-integration-specs/init_single_platform/**/*.*')
       files_to_delete.each do |file_to_delete|
         sh "rm -rf #{file_to_delete}"
@@ -227,18 +254,17 @@ begin
         execute_command "rm -rf Pods"
         execute_command "#{pod_command} install --verbose --no-repo-update"
 
-        puts "Building example: AFNetworking Mac Example'"
-        execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking Example' clean install"
+        puts "Building example: AFNetworking Mac Example"
+        execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking Example' clean build"
 
-        puts "Building example: AFNetworking iOS Example'"
+        puts "Building example: AFNetworking iOS Example"
         xcode_version = `xcodebuild -version`.scan(/Xcode (.*)\n/).first.first
         major_version = xcode_version.split('.').first.to_i
         # Specifically build against the simulator SDK so we don't have to deal with code signing.
-        if  major_version > 4
-          execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking iOS Example' clean install ONLY_ACTIVE_ARCH=NO -destination 'platform=iOS Simulator,name=iPhone Retina (4-inch)'"
+        if  major_version > 5
+          execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking iOS Example' clean build ONLY_ACTIVE_ARCH=NO -destination 'platform=iOS Simulator,name=iPhone 6'"
         else
-          sdk = Dir.glob("#{`xcode-select -print-path`.chomp}/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator*.sdk").last
-          execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking iOS Example' clean install ONLY_ACTIVE_ARCH=NO  -sdk #{sdk}"
+          execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking iOS Example' clean build ONLY_ACTIVE_ARCH=NO -destination 'platform=iOS Simulator,name=iPhone Retina (4-inch)'"
         end
       end
     end
@@ -251,11 +277,24 @@ begin
 
   task :default => :spec
 
-rescue LoadError
+  #-- Rubocop ----------------------------------------------------------------#
+
+  if RUBY_VERSION >= '1.9.3'
+    require 'rubocop/rake_task'
+
+    RuboCop::RakeTask.new(:rubocop) do |task|
+      task.patterns = ['lib', 'spec']
+    end
+  end
+
+rescue LoadError, NameError => e
   $stderr.puts "\033[0;31m" \
     '[!] Some Rake tasks haven been disabled because the environment' \
     ' couldn’t be loaded. Be sure to run `rake bootstrap` first.' \
     "\e[0m"
+  $stderr.puts e.message
+  $stderr.puts e.backtrace
+  $stderr.puts
 end
 
 # Helpers
@@ -287,3 +326,9 @@ end
 def red(string)
   "\033[0;31m#{string}\e[0m"
 end
+
+def has_required_binary?(name)
+  `which #{name}`
+  $?.success?
+end
+

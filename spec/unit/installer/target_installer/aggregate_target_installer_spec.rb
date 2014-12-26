@@ -64,19 +64,6 @@ module Pod
         @project.targets.first.name.should == @target_definition.label
       end
 
-      it 'adds the user build configurations to the target' do
-        @installer.install!
-        target = @project.targets.first
-        target.build_settings('Test')['VALIDATE_PRODUCT'].should.nil?
-        target.build_settings('AppStore')['VALIDATE_PRODUCT'].should == 'YES'
-      end
-
-      it 'sets VALIDATE_PRODUCT to YES for the Release configuration for iOS targets' do
-        @installer.install!
-        target = @project.targets.first
-        target.build_settings('Release')['VALIDATE_PRODUCT'].should == 'YES'
-      end
-
       it 'sets the platform and the deployment target for iOS targets' do
         @installer.install!
         target = @project.targets.first
@@ -109,7 +96,7 @@ module Pod
 
       it 'does not enable the GCC_WARN_INHIBIT_ALL_WARNINGS flag by default' do
         @installer.install!
-        @installer.library.target.build_configurations.each do |config|
+        @installer.target.native_target.build_configurations.each do |config|
           config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'].should.be.nil
         end
       end
@@ -147,12 +134,39 @@ module Pod
         script.read.should.include?('logo-sidebar.png')
       end
 
+      it 'does not add framework resources to copy resources script' do
+        @pod_target.stubs(:requires_frameworks? => true)
+        @installer.install!
+        support_files_dir = config.sandbox.target_support_files_dir('Pods')
+        script = support_files_dir + 'Pods-resources.sh'
+        script.read.should.not.include?('logo-sidebar.png')
+      end
+
       xit 'adds the resources bundles to the copy resources script' do
 
       end
 
       xit 'adds the bridge support file to the copy resources script, if one was created' do
 
+      end
+
+      it 'does add pods to the embed frameworks script' do
+        @pod_target.stubs(:requires_frameworks? => true)
+        @target.stubs(:requires_frameworks? => true)
+        @installer.install!
+        support_files_dir = config.sandbox.target_support_files_dir('Pods')
+        script = support_files_dir + 'Pods-frameworks.sh'
+        script.read.should.include?('BananaLib.framework')
+      end
+
+      it 'does not add pods to the embed frameworks script if they are not to be built' do
+        @pod_target.stubs(:should_build? => false)
+        @pod_target.stubs(:requires_frameworks? => true)
+        @target.stubs(:requires_frameworks? => true)
+        @installer.install!
+        support_files_dir = config.sandbox.target_support_files_dir('Pods')
+        script = support_files_dir + 'Pods-frameworks.sh'
+        script.read.should.not.include?('BananaLib.framework')
       end
 
       it 'creates the acknowledgements files ' do
@@ -166,7 +180,7 @@ module Pod
 
       it 'creates a dummy source to ensure the creation of a single base library' do
         @installer.install!
-        build_files = @installer.library.target.source_build_phase.files
+        build_files = @installer.target.native_target.source_build_phase.files
         build_file = build_files.find { |bf| bf.file_ref.path.include?('Pods-dummy.m') }
         build_file.should.be.not.nil
         build_file.file_ref.path.should == 'Pods-dummy.m'

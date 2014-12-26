@@ -10,6 +10,9 @@ source 'http://rubygems.org'
 
 gemspec
 
+# This is the version that ships with OS X 10.10, so be sure we test against it.
+gem 'json', '1.7.7'
+
 group :development do
   cp_gem 'claide',               'CLAide'
   cp_gem 'cocoapods-core',       'Core'
@@ -17,7 +20,10 @@ group :development do
   cp_gem 'cocoapods-plugins',    'cocoapods-plugins'
   cp_gem 'cocoapods-trunk',      'cocoapods-trunk'
   cp_gem 'cocoapods-try',        'cocoapods-try'
+  cp_gem 'molinillo',            'Molinillo'
   cp_gem 'xcodeproj',            'Xcodeproj'
+
+  gem 'cocoapods-dependencies'
 
   gem 'bacon'
   gem 'mocha'
@@ -28,15 +34,7 @@ group :development do
   # Integration tests
   gem 'diffy'
   gem 'clintegracon'
-
-  if RUBY_VERSION >= '1.9.3'
-    gem 'rubocop'
-  end
-
-  if RUBY_PLATFORM.include?('darwin')
-    # Make Xcodeproj faster
-    gem 'libxml-ruby'
-  end
+  gem 'rubocop'
 end
 
 group :debugging do
@@ -44,12 +42,5 @@ group :debugging do
   gem 'kicker'
   gem 'awesome_print'
   gem 'pry'
-end
-
-group :ruby_1_8_7 do
-  # Lock the current lowest requirement for ActiveSupport 3 to ensure we don't
-  # re-introduce https://github.com/CocoaPods/CocoaPods/issues/1950
-  gem 'i18n', '0.6.4'
-  gem 'mime-types', '< 2.0'
-  gem 'activesupport', '< 4'
+  gem 'ruby-prof'
 end

@@ -72,12 +72,12 @@ module Pod
         sut.validate
       end
 
-      it 'respects the only errors option' do
+      it 'respects the allow warnings option' do
         podspec = stub_podspec(/.*summary.*/, '"summary": "A short description of",')
         file = write_podspec(podspec)
         sut = Validator.new(file, SourcesManager.master.map(&:url))
         sut.quick = true
-        sut.only_errors = true
+        sut.allow_warnings = true
         sut.validate
         sut.results.map(&:to_s).first.should.match /summary.*meaningful/
         sut.validated?.should.be.true
@@ -283,12 +283,49 @@ module Pod
         dependency.external_source.key?(:podspec).should.be.true
       end
 
-      it 'respects the local option' do
-        sut = Validator.new(podspec_path, SourcesManager.master.map(&:url))
-        sut.stubs(:validate_url)
-        podfile = sut.send(:podfile_from_spec, :ios, '5.0')
-        deployment_target = podfile.target_definitions['Pods'].platform.deployment_target
-        deployment_target.to_s.should == '5.0'
+      it 'uses the deployment target of the current subspec' do
+        validator = Validator.new(podspec_path, SourcesManager.master.map(&:url))
+        validator.stubs(:validate_url)
+        validator.stubs(:validate_screenshots)
+        validator.stubs(:check_file_patterns)
+        validator.stubs(:check_file_patterns)
+        Installer.any_instance.stubs(:install!)
+        Installer.any_instance.stubs(:aggregate_targets).returns([])
+        subspec = Specification.new(validator.spec, 'subspec') do |s|
+          s.ios.deployment_target = '7.0'
+        end
+        validator.spec.stubs(:subspecs).returns([subspec])
+        validator.expects(:podfile_from_spec).with(:osx, nil, nil).once
+        validator.expects(:podfile_from_spec).with(:ios, nil, nil).once
+        validator.expects(:podfile_from_spec).with(:ios, '7.0', nil).once
+        podfile = validator.send(:perform_extensive_analysis, validator.spec)
+      end
+
+      describe '#podfile_from_spec' do
+        before do
+          @sut = Validator.new(podspec_path, SourcesManager.master.map(&:url))
+          @sut.stubs(:validate_url)
+        end
+
+        it 'configures the deployment target' do
+          podfile = @sut.send(:podfile_from_spec, :ios, '5.0')
+          target_definition = podfile.target_definitions['Pods']
+          platform = target_definition.platform
+          platform.symbolic_name.should == :ios
+          platform.deployment_target.to_s.should == '5.0'
+        end
+
+        it 'includes the use_frameworks! directive' do
+          podfile = @sut.send(:podfile_from_spec, :ios, '5.0', true)
+          target_definition = podfile.target_definitions['Pods']
+          target_definition.uses_frameworks?.should == true
+        end
+
+        it 'includes the use_frameworks!(false) directive' do
+          podfile = @sut.send(:podfile_from_spec, :ios, '5.0', false)
+          target_definition = podfile.target_definitions['Pods']
+          (!!target_definition.uses_frameworks?).should == false
+        end
       end
 
       it 'repects the source_urls parameter' do
@@ -319,14 +356,36 @@ module Pod
         sut.results.count.should == 0
       end
 
-      it 'checks for file patterns' do
-        file = write_podspec(stub_podspec(/.*source_files.*/, '"source_files": "wrong_paht.*",'))
-        sut = Validator.new(file, SourcesManager.master.map(&:url))
-        sut.stubs(:build_pod)
-        sut.stubs(:validate_url)
-        sut.validate
-        sut.results.map(&:to_s).first.should.match /source_files.*did not match/
-        sut.result_type.should == :error
+      describe 'file pattern validation' do
+        it 'checks for file patterns' do
+          file = write_podspec(stub_podspec(/.*source_files.*/, '"source_files": "wrong_paht.*",'))
+          sut = Validator.new(file, SourcesManager.master.map(&:url))
+          sut.stubs(:build_pod)
+          sut.stubs(:validate_url)
+          sut.validate
+          sut.results.map(&:to_s).first.should.match /source_files.*did not match/
+          sut.result_type.should == :error
+        end
+
+        it 'checks private_header_files matches only headers' do
+          file = write_podspec(stub_podspec(/.*source_files.*/, '"source_files": "JSONKit.*", "private_header_files": "JSONKit.m",'))
+          sut = Validator.new(file, SourcesManager.master.map(&:url))
+          sut.stubs(:build_pod)
+          sut.stubs(:validate_url)
+          sut.validate
+          sut.results.map(&:to_s).first.should.match /matches non-header files \(JSONKit\.m\)/
+          sut.result_type.should == :error
+        end
+
+        it 'checks public_header_files matches only headers' do
+          file = write_podspec(stub_podspec(/.*source_files.*/, '"source_files": "JSONKit.*", "public_header_files": "JSONKit.m",'))
+          sut = Validator.new(file, SourcesManager.master.map(&:url))
+          sut.stubs(:build_pod)
+          sut.stubs(:validate_url)
+          sut.validate
+          sut.results.map(&:to_s).first.should.match /matches non-header files \(JSONKit\.m\)/
+          sut.result_type.should == :error
+        end
       end
 
       it 'validates a podspec with dependencies' do

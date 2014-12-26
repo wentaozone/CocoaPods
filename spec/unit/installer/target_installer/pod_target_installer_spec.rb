@@ -21,6 +21,9 @@ module Pod
         file_accessor.source_files.each do |file|
           @project.add_file_reference(file, group)
         end
+        file_accessor.resources.each do |resource|
+          @project.add_file_reference(resource, group)
+        end
 
         @pod_target = PodTarget.new([@spec], @target_definition, config.sandbox)
         @pod_target.stubs(:platform).returns(Platform.new(:ios, '6.0'))
@@ -49,12 +52,6 @@ module Pod
         @installer.install!
         @project.targets.count.should == 1
         @project.targets.first.name.should == 'Pods-BananaLib'
-      end
-
-      it 'sets VALIDATE_PRODUCT to YES for the Release configuration for iOS targets' do
-        @installer.install!
-        target = @project.targets.first
-        target.build_settings('Release')['VALIDATE_PRODUCT'].should == 'YES'
       end
 
       it 'sets the platform and the deployment target for iOS targets' do
@@ -88,7 +85,7 @@ module Pod
 
       it 'does not enable the GCC_WARN_INHIBIT_ALL_WARNINGS flag by default' do
         @installer.install!
-        @installer.library.target.build_configurations.each do |config|
+        @installer.target.native_target.build_configurations.each do |config|
           config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'].should.be.nil
         end
       end
@@ -97,7 +94,7 @@ module Pod
 
       it 'adds the source files of each pod to the target of the Pod library' do
         @installer.install!
-        names = @installer.library.target.source_build_phase.files.map { |bf| bf.file_ref.display_name }
+        names = @installer.target.native_target.source_build_phase.files.map { |bf| bf.file_ref.display_name }
         names.should.include('Banana.m')
       end
 
@@ -106,7 +103,19 @@ module Pod
       it 'adds the resource bundle targets' do
         @pod_target.file_accessors.first.stubs(:resource_bundles).returns('banana_bundle' => [])
         @installer.install!
-        @project.targets.map(&:name).should == ['Pods-BananaLib', 'banana_bundle']
+        bundle_target = @project.targets.find { |t| t.name == 'Pods-BananaLib-banana_bundle' }
+        bundle_target.should.be.an.instance_of Xcodeproj::Project::Object::PBXNativeTarget
+        bundle_target.product_reference.name.should == 'banana_bundle.bundle'
+        bundle_target.product_reference.path.should == 'banana_bundle.bundle'
+      end
+
+      it 'adds framework resources to the framework target' do
+        @pod_target.stubs(:requires_frameworks? => true)
+        @installer.install!
+        resources = @project.targets.first.resources_build_phase.files
+        resources.count.should > 0
+        resource = resources.find { |res| res.file_ref.path.include?('logo-sidebar.png') }
+        resource.should.be.not.nil
       end
 
       xit 'adds the build configurations to the resources bundle targets' do
@@ -142,7 +151,7 @@ module Pod
 
       it 'creates a dummy source to ensure the compilation of libraries with only categories' do
         @installer.install!
-        build_files = @installer.library.target.source_build_phase.files
+        build_files = @installer.target.native_target.source_build_phase.files
         build_file = build_files.find { |bf| bf.file_ref.display_name == 'Pods-BananaLib-dummy.m' }
         build_file.should.be.not.nil
         build_file.file_ref.path.should == 'Pods-BananaLib-dummy.m'
@@ -152,17 +161,25 @@ module Pod
       end
 
       #--------------------------------------------------------------------------------#
+
+      it 'does not create a target if the specification does not define source files' do
+        @pod_target.file_accessors.first.stubs(:source_files).returns([])
+        @installer.install!
+        @project.targets.should == []
+      end
+
+      #--------------------------------------------------------------------------------#
       describe 'concerning compiler flags' do
         before do
           @spec = Pod::Spec.new
         end
 
         it 'flags should not be added to dtrace files' do
-          @installer.library.target_definition.stubs(:inhibits_warnings_for_pod?).returns(true)
+          @installer.target.target_definition.stubs(:inhibits_warnings_for_pod?).returns(true)
           @installer.install!
 
-          dtrace_files = @installer.library.target.source_build_phase.files.reject do|sf|
-            !(File.extname(sf.file_ref.path) == '.d')
+          dtrace_files = @installer.target.native_target.source_build_phase.files.select do |sf|
+            File.extname(sf.file_ref.path) == '.d'
           end
           dtrace_files.each do |dt|
             dt.settings.should.be.nil
@@ -170,65 +187,61 @@ module Pod
         end
 
         it 'adds -w per pod if target definition inhibits warnings for that pod' do
-          @installer.library.target_definition.stubs(:inhibits_warnings_for_pod?).returns(true)
-          flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios))
+          @installer.target.target_definition.stubs(:inhibits_warnings_for_pod?).returns(true)
+          flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios), true)
 
           flags.should.include?('-w')
         end
 
         it "doesn't inhibit warnings by default" do
-          flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios))
+          flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios), true)
           flags.should.not.include?('-w')
         end
 
         it 'adds -Xanalyzer -analyzer-disable-checker per pod' do
-          @installer.library.target_definition.stubs(:inhibits_warnings_for_pod?).returns(true)
-          flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios))
+          @installer.target.target_definition.stubs(:inhibits_warnings_for_pod?).returns(true)
+          flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios), true)
 
           flags.should.include?('-Xanalyzer -analyzer-disable-checker')
         end
 
         it "doesn't inhibit analyzer warnings by default" do
-          flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios))
+          flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios), true)
           flags.should.not.include?('-Xanalyzer -analyzer-disable-checker')
         end
 
         describe 'concerning ARC before and after iOS 6.0 and OS X 10.8' do
 
           it 'does not do anything if ARC is *not* required' do
-            @spec.requires_arc = false
             @spec.ios.deployment_target = '5'
             @spec.osx.deployment_target = '10.6'
-            ios_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios))
-            osx_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:osx))
+            ios_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios), false)
+            osx_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:osx), false)
             ios_flags.should.not.include '-DOS_OBJECT_USE_OBJC'
             osx_flags.should.not.include '-DOS_OBJECT_USE_OBJC'
           end
 
           it 'does *not* disable the `OS_OBJECT_USE_OBJC` flag if ARC is required and has a deployment target of >= iOS 6.0 or OS X 10.8' do
-            @spec.requires_arc = false
             @spec.ios.deployment_target = '6'
             @spec.osx.deployment_target = '10.8'
-            ios_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios))
-            osx_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:osx))
+            ios_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios), false)
+            osx_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:osx), false)
             ios_flags.should.not.include '-DOS_OBJECT_USE_OBJC'
             osx_flags.should.not.include '-DOS_OBJECT_USE_OBJC'
           end
 
           it '*does* disable the `OS_OBJECT_USE_OBJC` flag if ARC is required but has a deployment target < iOS 6.0 or OS X 10.8' do
-            @spec.requires_arc = true
             @spec.ios.deployment_target = '5.1'
             @spec.osx.deployment_target = '10.7.2'
-            ios_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios))
-            osx_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:osx))
+            ios_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios), true)
+            osx_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:osx), true)
             ios_flags.should.include '-DOS_OBJECT_USE_OBJC'
             osx_flags.should.include '-DOS_OBJECT_USE_OBJC'
           end
 
           it '*does* disable the `OS_OBJECT_USE_OBJC` flag if ARC is required and *no* deployment target is specified' do
-            @spec.requires_arc = true
-            ios_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios))
-            osx_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:osx))
+            ios_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:ios), true)
+            osx_flags = @installer.send(:compiler_flags_for_consumer, @spec.consumer(:osx), true)
             ios_flags.should.include '-DOS_OBJECT_USE_OBJC'
             osx_flags.should.include '-DOS_OBJECT_USE_OBJC'
           end

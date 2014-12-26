@@ -140,7 +140,7 @@ module Pod
       end
 
       # Returns a string containing relative location of a path from the Podfile.
-      # The returned path is quoted. If the argument is nit it returns the
+      # The returned path is quoted. If the argument is nil it returns the
       # empty string.
       #
       def path(pathname)
@@ -156,11 +156,11 @@ module Pod
 
       # Prints the textual representation of a given set.
       #
-      def pod(set, mode = :normal, statistics_provider = nil)
+      def pod(set, mode = :normal)
         if mode == :name_and_version
           puts_indented "#{set.name} #{set.versions.first.version}"
         else
-          pod = Specification::Set::Presenter.new(set, statistics_provider)
+          pod = Specification::Set::Presenter.new(set)
           title = "\n-> #{pod.name} (#{pod.version})"
           if pod.spec.deprecated?
             title += " #{pod.deprecation_description}"
@@ -174,33 +174,33 @@ module Pod
             puts_indented "pod '#{pod.name}', '~> #{pod.version}'"
             labeled('Homepage', pod.homepage)
             labeled('Source',   pod.source_url)
-            labeled('Versions', pod.verions_by_source)
+            labeled('Versions', pod.versions_by_source)
             if mode == :stats
-              labeled('Pushed',   pod.github_last_activity)
               labeled('Authors',  pod.authors) if pod.authors =~ /,/
               labeled('Author',   pod.authors) if pod.authors !~ /,/
               labeled('License',  pod.license)
               labeled('Platform', pod.platform)
-              labeled('Watchers', pod.github_watchers)
+              labeled('Stars',    pod.github_stargazers)
               labeled('Forks',    pod.github_forks)
             end
-            labeled('Sub specs', pod.subspecs)
+            labeled('Subspecs', pod.subspecs)
           end
         end
       end
 
       # Prints a message with a label.
       #
-      def labeled(label, value, justification = 16)
+      def labeled(label, value, justification = 12)
         if value
-          ''.tap do |t|
-            t << "    - #{label}:".ljust(justification)
-            if value.is_a?(Array)
-              separator = "\n  - "
-              puts_indented t << separator << value.join(separator)
-            else
-              puts_indented t << value.to_s << "\n"
+          title = "- #{label}:"
+          if value.is_a?(Array)
+            lines = [wrap_string(title, self.indentation_level)]
+            value.each do |v|
+              lines << wrap_string("- #{v}", self.indentation_level + 2)
             end
+            puts lines.join("\n")
+          else
+            puts wrap_string(title.ljust(justification) + "#{value}", self.indentation_level)
           end
         end
       end
@@ -286,10 +286,10 @@ module Pod
       #
       def wrap_string(string, indent = 0)
         if disable_wrap
-          string
+          (' ' * indent) + string
         else
           first_space = ' ' * indent
-          indented = CLAide::Helper.wrap_with_indent(string, indent, 9999)
+          indented = CLAide::Command::Banner::TextWrapper.wrap_with_indent(string, indent, 9999)
           first_space + indented
         end
       end

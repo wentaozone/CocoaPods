@@ -9,6 +9,7 @@ module Pod
       #         known Pods.
       #
       def aggregate
+        return Source::Aggregate.new([]) unless config.repos_dir.exist?
         dirs = config.repos_dir.children.select(&:directory?)
         Source::Aggregate.new(dirs)
       end
@@ -60,6 +61,7 @@ module Pod
       #         installation of CocoaPods.
       #
       def all
+        return [] unless config.repos_dir.exist?
         dirs = config.repos_dir.children.select(&:directory?)
         dirs.map { |repo| Source.new(repo) }
       end
@@ -237,7 +239,7 @@ module Pod
           version_msg = (min == max) ? min : "#{min} - #{max}"
           raise Informative, "The `#{dir.basename}` repo requires " \
           "CocoaPods #{version_msg} (currently using #{Pod::VERSION})\n".red +
-          'Update CocoaPods, or checkout the appropriate tag in the repo.'
+            'Update CocoaPods, or checkout the appropriate tag in the repo.'
         end
 
         needs_sudo = path_writable?(__FILE__)
@@ -393,7 +395,9 @@ module Pod
       #
       def source_with_url(url)
         url = url.downcase.gsub(/.git$/, '')
-        aggregate.sources.find { |s| s.url.downcase.gsub(/.git$/, '') == url }
+        aggregate.sources.find do |source|
+          source.url && source.url.downcase.gsub(/.git$/, '') == url
+        end
       end
 
       # Returns a suitable repository name for `url`.
@@ -433,16 +437,16 @@ module Pod
         end
 
         case url.to_s.downcase
-        when %r{github.com(:|/)cocoapods/specs}
+        when %r{github.com[:/]+cocoapods/specs}
           base = 'master'
-        when %r{github.com(:|/)(.+)/(.+)}
-          base = Regexp.last_match[2]
+        when %r{github.com[:/]+(.+)/(.+)}
+          base = Regexp.last_match[1]
+        when %r{^\S+@(\S+)[:/]+(.+)$}
+          host, path = Regexp.last_match.captures
+          base = base_from_host_and_path[host, path]
         when URI.regexp
           url = URI(url.downcase)
           base = base_from_host_and_path[url.host, url.path]
-        when %r{^\S+@(\S+)[:/](.+)$}
-          host, path = Regexp.last_match.captures
-          base = base_from_host_and_path[host, path]
         else
           base = url.to_s.downcase
         end

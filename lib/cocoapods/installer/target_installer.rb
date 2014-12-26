@@ -10,16 +10,16 @@ module Pod
       #
       attr_reader :sandbox
 
-      # @return [Library] The library whose target needs to be generated.
+      # @return [Target] The library whose target needs to be generated.
       #
-      attr_reader :library
+      attr_reader :target
 
       # @param  [Project] project @see project
-      # @param  [Library] library @see library
+      # @param  [Target]  target  @see target
       #
-      def initialize(sandbox, library)
+      def initialize(sandbox, target)
         @sandbox = sandbox
-        @library = library
+        @target = target
       end
 
       private
@@ -36,31 +36,115 @@ module Pod
       # @return [void]
       #
       def add_target
-        name = library.label
-        platform = library.platform.name
-        deployment_target = library.platform.deployment_target.to_s
-        @target = project.new_target(:static_library, name, platform, deployment_target)
+        product_type = target.product_type
+        name = target.label
+        platform = target.platform.name
+        deployment_target = target.platform.deployment_target.to_s
+        @native_target = project.new_target(product_type, name, platform, deployment_target)
 
-        library.user_build_configurations.each do |bc_name, type|
-          configuration = @target.add_build_configuration(bc_name, type)
+        product_name = target.product_name
+        product = @native_target.product_reference
+        product.name = product_name
+        product.path = product_name
+
+        target.user_build_configurations.each do |bc_name, type|
+          configuration = @native_target.add_build_configuration(bc_name, type)
         end
 
-        settings = { 'OTHER_LDFLAGS' => '', 'OTHER_LIBTOOLFLAGS' => '' }
-        if library.archs
-          settings['ARCHS'] = library.archs
+        @native_target.build_configurations.each do |configuration|
+          configuration.build_settings.merge!(custom_build_settings)
         end
 
-        @target.build_configurations.each do |configuration|
-          configuration.build_settings.merge!(settings)
+        target.native_target = @native_target
+      end
+
+      # Returns the customized build settings which are overridden in the build
+      # settings of the user target.
+      #
+      # @return [Hash{String => String}]
+      #
+      def custom_build_settings
+        settings = {}
+
+        if target.archs
+          settings['ARCHS'] = target.archs
         end
 
-        library.target = @target
+        if target.requires_frameworks?
+          settings['PRODUCT_NAME'] = target.product_module_name
+        else
+          settings.merge!('OTHER_LDFLAGS' => '', 'OTHER_LIBTOOLFLAGS' => '')
+        end
+
+        settings
       end
 
       # Creates the directory where to store the support files of the target.
       #
       def create_support_files_dir
-        library.support_files_dir.mkdir
+        target.support_files_dir.mkdir
+      end
+
+      # Creates the Info.plist file which sets public framework attributes
+      #
+      # @return [void]
+      #
+      def create_info_plist_file
+        path = target.info_plist_path
+        UI.message "- Generating Info.plist file at #{UI.path(path)}" do
+          generator = Generator::InfoPlistFile.new(target)
+          generator.save_as(path)
+          add_file_to_support_group(path)
+
+          native_target.build_configurations.each do |c|
+            relative_path = path.relative_path_from(sandbox.root)
+            c.build_settings['INFOPLIST_FILE'] = relative_path.to_s
+          end
+        end
+      end
+
+      # Creates the module map file which ensures that the umbrella header is
+      # recognized with a customized path
+      #
+      # @return [void]
+      #
+      def create_module_map
+        path = target.module_map_path
+        UI.message "- Generating module map file at #{UI.path(path)}" do
+          generator = Generator::ModuleMap.new(target)
+          generator.save_as(path)
+          add_file_to_support_group(path)
+
+          native_target.build_configurations.each do |c|
+            relative_path = path.relative_path_from(sandbox.root)
+            c.build_settings['MODULEMAP_FILE'] = relative_path.to_s
+          end
+        end
+      end
+
+      # Generates a header which ensures that all header files are exported
+      # in the module map
+      #
+      # @yield_param [Generator::UmbrellaHeader]
+      #              yielded once to configure the imports
+      #
+      def create_umbrella_header
+        path = target.umbrella_header_path
+        UI.message "- Generating umbrella header at #{UI.path(path)}" do
+          generator = Generator::UmbrellaHeader.new(target)
+          yield generator if block_given?
+          generator.save_as(path)
+
+          # Add the file to the support group and the native target,
+          # so it will been added to the header build phase
+          file_ref = add_file_to_support_group(path)
+          native_target.add_file_references([file_ref])
+
+          # Make the umbrella header public
+          build_file = native_target.headers_build_phase.build_file(file_ref)
+          build_file.settings ||= {}
+          build_file.settings['ATTRIBUTES'] = ['Public']
+        end
       end
 
       # Generates a dummy source file for each target so libraries that contain
@@ -69,11 +153,11 @@ module Pod
       # @return [void]
       #
       def create_dummy_source
-        path = library.dummy_source_path
-        generator = Generator::DummySource.new(library.label)
+        path = target.dummy_source_path
+        generator = Generator::DummySource.new(target.label)
         generator.save_as(path)
         file_reference = add_file_to_support_group(path)
-        target.source_build_phase.add_file_reference(file_reference)
+        native_target.source_build_phase.add_file_reference(file_reference)
       end
 
       # @return [PBXNativeTarget] the target generated by the installation
@@ -81,7 +165,7 @@ module Pod
       #
       # @note   Generated by the {#add_target} step.
       #
-      attr_reader :target
+      attr_reader :native_target
 
       private
 
@@ -98,7 +182,7 @@ module Pod
       # @return [TargetDefinition] the target definition of the library.
       #
       def target_definition
-        library.target_definition
+        target.target_definition
       end
 
       # @return [PBXGroup] the group where the file references to the support

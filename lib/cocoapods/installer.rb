@@ -89,6 +89,7 @@ module Pod
       prepare
       resolve_dependencies
       download_dependencies
+      determine_dependency_product_types
       generate_pods_project
       integrate_user_project if config.integrate_targets?
       perform_post_install_actions
@@ -97,6 +98,7 @@ module Pod
     def prepare
       UI.message 'Preparing' do
         sandbox.prepare
+        ensure_plugins_are_installed!
         Migrator.migrate(sandbox)
       end
     end
@@ -310,6 +312,21 @@ module Pod
       @pod_installers.each(&:clean!)
     end
 
+    # Determines if the dependencies need to be built as dynamic frameworks or
+    # if they can be built as static libraries by checking for the Swift source
+    # presence. Therefore it is important that the file accessors of the
+    # #pod_targets are created.
+    #
+    # @return [void]
+    #
+    def determine_dependency_product_types
+      aggregate_targets.each do |aggregate_target|
+        aggregate_target.pod_targets.each do |pod_target|
+          pod_target.host_requires_frameworks = aggregate_target.requires_frameworks?
+        end
+      end
+    end
+
     # Performs any post-installation actions
     #
     # @return [void]
@@ -323,7 +340,23 @@ module Pod
     #
     def run_plugins_post_install_hooks
       context = HooksContext.generate(sandbox, aggregate_targets)
-      HooksManager.run(:post_install, context)
+      HooksManager.run(:post_install, context, podfile.plugins)
+    end
+
+    # Ensures that all plugins specified in the {#podfile} are loaded.
+    #
+    # @return [void]
+    #
+    def ensure_plugins_are_installed!
+      require 'claide/command/plugin_manager'
+
+      loaded_plugins = Command::PluginManager.specifications.map(&:name)
+
+      podfile.plugins.keys.each do |plugin|
+        unless loaded_plugins.include? plugin
+          raise Informative, "Your Podfile requires that the plugin `#{plugin}` be installed. Please install it and try installation again."
+        end
+      end
     end
 
     # Prints a warning for any pods that are deprecated
@@ -378,7 +411,7 @@ module Pod
           build_configuration.build_settings['MACOSX_DEPLOYMENT_TARGET'] = osx_deployment_target.to_s if osx_deployment_target
           build_configuration.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = ios_deployment_target.to_s if ios_deployment_target
           build_configuration.build_settings['STRIP_INSTALLED_PRODUCT'] = 'NO'
-          build_configuration.build_settings['CLANG_ENABLE_OBJC_ARC'] = 'NO'
+          build_configuration.build_settings['CLANG_ENABLE_OBJC_ARC'] = 'YES'
         end
       end
     end
@@ -418,17 +451,33 @@ module Pod
         pod_targets.sort_by(&:name).each do |pod_target|
           pod_target.file_accessors.each do |file_accessor|
             file_accessor.spec_consumer.frameworks.each do |framework|
-              pod_target.target.add_system_framework(framework)
+              if pod_target.should_build?
+                pod_target.native_target.add_system_framework(framework)
+              end
             end
           end
         end
       end
     end
 
+    # Adds a target dependency for each pod spec to each aggregate target and
+    # links the pod targets among each other.
+    #
+    # @return [void]
+    #
     def set_target_dependencies
+      frameworks_group = pods_project.frameworks_group
       aggregate_targets.each do |aggregate_target|
         aggregate_target.pod_targets.each do |pod_target|
-          aggregate_target.target.add_dependency(pod_target.target)
+          unless pod_target.should_build?
+            pod_target.resource_bundle_targets.each do |resource_bundle_target|
+              aggregate_target.native_target.add_dependency(resource_bundle_target)
+            end
+
+            next
+          end
+
+          aggregate_target.native_target.add_dependency(pod_target.native_target)
           pod_target.dependencies.each do |dep|
 
             unless dep == pod_target.pod_name
@@ -437,7 +486,15 @@ module Pod
               unless pod_dependency_target
                 puts "[BUG] DEP: #{dep}"
               end
-              pod_target.target.add_dependency(pod_dependency_target.target)
+
+              next unless pod_dependency_target.should_build?
+              pod_target.native_target.add_dependency(pod_dependency_target.native_target)
+
+              if pod_target.requires_frameworks?
+                product_ref = frameworks_group.files.find { |f| f.path == pod_dependency_target.product_name } ||
+                  frameworks_group.new_product_ref_for_target(pod_dependency_target.product_basename, pod_dependency_target.product_type)
+                pod_target.native_target.frameworks_build_phase.add_file_reference(product_ref)
+              end
             end
           end
         end
@@ -465,8 +522,9 @@ module Pod
     # @return [void]
     #
     def write_lockfiles
-      # checkout_options = sandbox.checkout_options
-      @lockfile = Lockfile.generate(podfile, analysis_result.specifications)
+      external_source_pods = podfile.dependencies.select(&:external_source).map(&:root_name).uniq
+      checkout_options = sandbox.checkout_sources.select { |root_name, _| external_source_pods.include? root_name }
+      @lockfile = Lockfile.generate(podfile, analysis_result.specifications, checkout_options)
 
       UI.message "- Writing Lockfile in #{UI.path config.lockfile_path}" do
         @lockfile.write_to_disk(config.lockfile_path)

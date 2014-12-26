@@ -51,11 +51,14 @@ Repositories : #{repo_information.join("\n               ")}
 
 #{'[!] Oh no, an error occurred.'.red}
 #{error_from_podfile(exception)}
-#{'Search for existing github issues similar to yours:'.yellow}
+#{'Search for existing GitHub issues similar to yours:'.yellow}
 #{issues_url(exception)}
 
 #{'If none exists, create a ticket, with the template displayed above, on:'.yellow}
 https://github.com/CocoaPods/CocoaPods/issues/new
+
+#{'Be sure to first read the contributing guide for details on how to properly submit a ticket:'.yellow}
+https://github.com/CocoaPods/CocoaPods/blob/master/CONTRIBUTING.md
 
 Don't forget to anonymize any private data!
 
@@ -111,7 +114,7 @@ EOS
         end
 
         def installed_plugins
-          CLAide::Command::PluginsHelper.specifications.
+          CLAide::Command::PluginManager.specifications.
             reduce({}) { |hash, s| hash.tap { |h| h[s.name] = s.version.to_s } }
         end
 

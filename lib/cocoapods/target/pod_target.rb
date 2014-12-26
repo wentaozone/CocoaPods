@@ -19,8 +19,9 @@ module Pod
       @specs = specs
       @target_definition = target_definition
       @sandbox = sandbox
-      @build_headers  = Sandbox::HeadersStore.new(sandbox, 'Build')
+      @build_headers  = Sandbox::HeadersStore.new(sandbox, 'Private')
       @file_accessors = []
+      @resource_bundle_targets = []
     end
 
     # @return [String] the label for the target.
@@ -29,16 +30,44 @@ module Pod
       "#{target_definition.label}-#{root_spec.name}"
     end
 
+    # @return [String] The name to use for the source code module constructed
+    #         for this target, and which will be used to import the module in
+    #         implementation source files.
+    #
+    def product_module_name
+      root_spec.module_name
+    end
+
     # @return [Array<Sandbox::FileAccessor>] the file accessors for the
     #         specifications of this target.
     #
     attr_accessor :file_accessors
+
+    # @return [Array<PBXTarget>] the resource bundle targets belonging
+    #         to this target.
+    attr_reader :resource_bundle_targets
+
+    # @return [Bool] Whether or not this target should be build.
+    #
+    # A target should not be build if it has no source files.
+    #
+    def should_build?
+      !file_accessors.flat_map(&:source_files).empty?
+    end
 
     # @return [Array<Specification::Consumer>] the specification consumers for
     #         the target.
     #
     def spec_consumers
       specs.map { |spec| spec.consumer(platform) }
+    end
+
+    # @return [Boolean] Whether the target uses Swift code
+    #
+    def uses_swift?
+      file_accessors.any? do |file_accessor|
+        file_accessor.source_files.any? { |sf| sf.extname == ".swift" }
+      end
     end
 
     # @return [Specification] The root specification for the target.
@@ -53,12 +82,21 @@ module Pod
       root_spec.name
     end
 
+    # @param  [String] bundle_name
+    #         The name of the bundle product, which is given by the +spec+.
+    #
+    # @return [String] The derived name of the resource bundle target.
+    #
+    def resources_bundle_target_label(bundle_name)
+      "#{label}-#{bundle_name}"
+    end
+
     # @return [Array<String>] The names of the Pods on which this target
     #         depends.
     #
     def dependencies
-      specs.map do |spec|
-        spec.consumer(platform).dependencies.map { |dep| Specification.root_name(dep.name) }
+      spec_consumers.map do |consumer|
+        consumer.dependencies.map { |dep| Specification.root_name(dep.name) }
       end.flatten
     end
 

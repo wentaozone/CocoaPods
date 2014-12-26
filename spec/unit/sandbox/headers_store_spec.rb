@@ -12,7 +12,7 @@ module Pod
       @header_dir.root.should == temporary_directory + 'Sandbox/Headers/Public'
     end
 
-    it "can add namespaced headers to it's header path using symlinks and return the relative path" do
+    it "can add namespaced headers to its header path using symlinks and return the relative path" do
       FileUtils.mkdir_p(@sandbox.root + 'ExampleLib/')
       namespace_path = Pathname.new('ExampleLib')
       relative_header_paths = [
@@ -22,7 +22,7 @@ module Pod
       relative_header_paths.each do |path|
         File.open(@sandbox.root + path, 'w') { |file| file.write('hello') }
       end
-      symlink_paths = @header_dir.add_files(namespace_path, relative_header_paths)
+      symlink_paths = @header_dir.add_files(namespace_path, relative_header_paths, :fake_platform)
       symlink_paths.each do |path|
         path.should.be.symlink
         File.read(path).should == 'hello'
@@ -39,12 +39,21 @@ module Pod
       relative_header_paths.each do |path|
         File.open(@sandbox.root + path, 'w') { |file| file.write('hello') }
       end
-      @header_dir.add_files(namespace_path, relative_header_paths)
-      @header_dir.search_paths.should.include('${PODS_ROOT}/Headers/Public/ExampleLib')
+      @header_dir.add_files(namespace_path, relative_header_paths, :fake_platform)
+      @header_dir.search_paths(:fake_platform).should.include('${PODS_ROOT}/Headers/Public/ExampleLib')
     end
 
     it 'always adds the Headers root to the header search paths' do
-      @header_dir.search_paths.should.include('${PODS_ROOT}/Headers/Public')
+      @header_dir.search_paths(:fake_platform).should.include('${PODS_ROOT}/Headers/Public')
+    end
+
+    it 'only exposes header search paths for the given platform' do
+      @header_dir.add_search_path('iOS Search Path', :ios)
+      @header_dir.add_search_path('OS X Search Path', :osx)
+      @header_dir.search_paths(:ios).sort.should == [
+        "${PODS_ROOT}/Headers/Public",
+        "${PODS_ROOT}/Headers/Public/iOS Search Path",
+      ]
     end
   end
 end

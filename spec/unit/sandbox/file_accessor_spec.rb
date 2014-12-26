@@ -53,6 +53,19 @@ module Pod
         ]
       end
 
+      it 'returns the source files that use arc' do
+        @accessor.arc_source_files.sort.should == [
+          @root + 'Classes/Banana.h',
+          @root + 'Classes/Banana.m',
+          @root + 'Classes/BananaPrivate.h',
+          @root + 'Classes/BananaTrace.d',
+        ]
+      end
+
+      it 'returns the source files that do not use arc' do
+        @accessor.non_arc_source_files.sort.should == []
+      end
+
       it 'returns the header files' do
         @accessor.headers.sort.should == [
           @root + 'Classes/Banana.h',
@@ -74,10 +87,17 @@ module Pod
         ]
       end
 
-      it 'filters the private headers form the public headers' do
+      it 'filters the private headers from the public headers' do
         @spec_consumer.stubs(:public_header_files).returns([])
         @spec_consumer.stubs(:private_header_files).returns(['**/*Private*'])
         @accessor.public_headers.sort.should == [
+          @root + 'Classes/Banana.h',
+        ]
+      end
+
+      it 'includes the vendored framework headers if requested' do
+        @accessor.public_headers(true).sort.should == [
+          @root + 'Bananalib.framework/Versions/A/Headers/Bananalib.h',
           @root + 'Classes/Banana.h',
         ]
       end
@@ -106,6 +126,12 @@ module Pod
 
       it 'returns the paths of the framework bundles' do
         @accessor.vendored_frameworks.should.include?(@root + 'Bananalib.framework')
+      end
+
+      it 'returns the paths of the framework headers' do
+        @accessor.vendored_frameworks_headers.should == [
+          @root + 'Bananalib.framework/Versions/A/Headers/Bananalib.h',
+        ]
       end
 
       it 'returns the paths of the library files' do
@@ -153,6 +179,30 @@ module Pod
         ]
       end
 
+      describe 'using requires_arc' do
+        it 'when false returns all source files as non-arc' do
+          @spec_consumer.stubs(:requires_arc).returns(false)
+          @accessor.non_arc_source_files.should == @accessor.source_files
+          @accessor.arc_source_files.should.be.empty?
+        end
+
+        it 'when true returns all source files as arc' do
+          @spec_consumer.stubs(:requires_arc).returns(true)
+          @accessor.arc_source_files.should == @accessor.source_files
+          @accessor.non_arc_source_files.should.be.empty?
+        end
+
+        it 'when a file pattern returns all source files as arc that match' do
+          @spec_consumer.stubs(:requires_arc).returns(['Classes/Banana.m'])
+          @accessor.arc_source_files.should == [@root + 'Classes/Banana.m']
+          @accessor.non_arc_source_files.sort.should == [
+            @root + 'Classes/Banana.h',
+            @root + 'Classes/BananaPrivate.h',
+            @root + 'Classes/BananaTrace.d',
+          ]
+        end
+      end
+
     end
 
     #-------------------------------------------------------------------------#
@@ -165,7 +215,7 @@ module Pod
           file_patterns = ['Classes/*.{h,m,d}', 'Vendor']
           options = {
             :exclude_patterns => ['Classes/**/osx/**/*', 'Resources/**/osx/**/*'],
-            :dir_pattern => '*.{h,hpp,hh,m,mm,c,cpp}',
+            :dir_pattern => '*.{h,hpp,hh,m,mm,c,cpp,swift}',
             :include_dirs => false,
           }
           @spec.exclude_files = options[:exclude_patterns]

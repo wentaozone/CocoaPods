@@ -63,22 +63,25 @@ module Pod
         ]
 
         def self.options
-          [['--quick',       'Lint skips checks that would require to download and build the spec'],
-           ['--only-errors', 'Lint validates even if warnings are present'],
+          [['--quick', 'Lint skips checks that would require to download and build the spec'],
+           ['--allow-warnings', 'Lint validates even if warnings are present'],
            ['--subspec=NAME', 'Lint validates only the given subspec'],
            ['--no-subspecs', 'Lint skips validation of subspecs'],
-           ['--no-clean',    'Lint leaves the build directory intact for inspection'],
-           ['--sources=https://github.com/artsy/Specs', 'The sources to pull dependant pods from ' \
-            '(defaults to https://github.com/CocoaPods/Specs.git)']].concat(super)
+           ['--no-clean', 'Lint leaves the build directory intact for inspection'],
+           ['--use-frameworks', 'Lint uses frameworks to install the spec'],
+           ['--sources=https://github.com/artsy/Specs', 'The sources from which to pull dependant pods ' \
+            '(defaults to https://github.com/CocoaPods/Specs.git). '\
+            'Multiple sources must be comma-delimited.']].concat(super)
         end
 
         def initialize(argv)
-          @quick        = argv.flag?('quick')
-          @only_errors  = argv.flag?('only-errors')
-          @clean        = argv.flag?('clean', true)
-          @subspecs     = argv.flag?('subspecs', true)
-          @only_subspec = argv.option('subspec')
-          @source_urls  = argv.option('sources', 'https://github.com/CocoaPods/Specs.git').split(',')
+          @quick           = argv.flag?('quick')
+          @allow_warnings  = argv.flag?('allow-warnings')
+          @clean           = argv.flag?('clean', true)
+          @subspecs        = argv.flag?('subspecs', true)
+          @only_subspec    = argv.option('subspec')
+          @use_frameworks  = argv.flag?('use-frameworks')
+          @source_urls     = argv.option('sources', 'https://github.com/CocoaPods/Specs.git').split(',')
           @podspecs_paths = argv.arguments!
           super
         end
@@ -87,12 +90,13 @@ module Pod
           UI.puts
           invalid_count = 0
           podspecs_to_lint.each do |podspec|
-            validator             = Validator.new(podspec, @source_urls)
-            validator.quick       = @quick
-            validator.no_clean    = !@clean
-            validator.only_errors = @only_errors
-            validator.no_subspecs = !@subspecs || @only_subspec
-            validator.only_subspec = @only_subspec
+            validator                = Validator.new(podspec, @source_urls)
+            validator.quick          = @quick
+            validator.no_clean       = !@clean
+            validator.allow_warnings = @allow_warnings
+            validator.no_subspecs    = !@subspecs || @only_subspec
+            validator.only_subspec   = @only_subspec
+            validator.use_frameworks = @use_frameworks
             validator.validate
             invalid_count += 1 unless validator.validated?
 
@@ -117,29 +121,28 @@ module Pod
 
         def podspecs_to_lint
           @podspecs_to_lint ||= begin
-          files = []
-          @podspecs_paths << '.' if @podspecs_paths.empty?
-          @podspecs_paths.each do |path|
-            if path =~ /https?:\/\//
-              require 'open-uri'
-              output_path = podspecs_tmp_dir + File.basename(path)
-              output_path.dirname.mkpath
-              open(path) do |io|
-                output_path.open('w') { |f| f << io.read }
+            files = []
+            @podspecs_paths << '.' if @podspecs_paths.empty?
+            @podspecs_paths.each do |path|
+              if path =~ /https?:\/\//
+                require 'open-uri'
+                output_path = podspecs_tmp_dir + File.basename(path)
+                output_path.dirname.mkpath
+                open(path) do |io|
+                  output_path.open('w') { |f| f << io.read }
+                end
+                files << output_path
+              elsif (pathname = Pathname.new(path)).directory?
+                files += Pathname.glob(pathname + '**/*.podspec{.json,}')
+                raise Informative, 'No specs found in the current directory.' if files.empty?
+              else
+                files << (pathname = Pathname.new(path))
+                raise Informative, "Unable to find a spec named `#{path}'." unless pathname.exist? && path.include?('.podspec')
               end
-              files << output_path
-            else if (pathname = Pathname.new(path)).directory?
-                   files += Pathname.glob(pathname + '**/*.podspec{.json,}')
-                   raise Informative, 'No specs found in the current directory.' if files.empty?
-            else
-              files << (pathname = Pathname.new(path))
-              raise Informative, "Unable to find a spec named `#{path}'." unless pathname.exist? && path.include?('.podspec')
             end
+            files
           end
-          end
-          files
         end
-      end
 
         def podspecs_tmp_dir
           Pathname(File.join(Pathname.new('/tmp').realpath, '/CocoaPods/Lint_podspec'))
@@ -152,33 +155,37 @@ module Pod
         self.summary = 'Prints the path of the given spec.'
 
         self.description = <<-DESC
-          Prints the path of 'NAME.podspec'
+          Prints the path of the .podspec file(s) whose name matches `QUERY`
         DESC
 
         self.arguments = [
-          CLAide::Argument.new('NAME', false),
+          CLAide::Argument.new('QUERY', false),
         ]
 
         def self.options
           [
+            ['--regex', 'Interpret the `QUERY` as a regular expression'],
             ['--show-all', 'Print all versions of the given podspec'],
           ].concat(super)
         end
 
         def initialize(argv)
+          @use_regex = argv.flag?('regex')
           @show_all = argv.flag?('show-all')
-          @spec = argv.shift_argument
-          @spec = @spec.gsub('.podspec', '') unless @spec.nil?
+          @query = argv.shift_argument
+          @query = @query.gsub('.podspec', '') unless @query.nil?
           super
         end
 
         def validate!
           super
-          help! 'A podspec name is required.' unless @spec
+          help! 'A podspec name is required.' unless @query
+          validate_regex!(@query) if @use_regex
         end
 
         def run
-          UI.puts get_path_of_spec(@spec, @show_all)
+          query = @use_regex ? @query : Regexp.escape(@query)
+          UI.puts get_path_of_spec(query, @show_all)
         end
       end
 
@@ -188,37 +195,43 @@ module Pod
         self.summary = 'Prints a spec file.'
 
         self.description = <<-DESC
-          Prints 'NAME.podspec' to standard output.
+          Prints the content of the podspec(s) whose name matches `QUERY` to standard output.
         DESC
 
         self.arguments = [
-          CLAide::Argument.new('NAME', false),
+          CLAide::Argument.new('QUERY', false),
         ]
 
         def self.options
-          [['--show-all', 'Pick from all versions of the given podspec']].concat(super)
+          [
+            ['--regex', 'Interpret the `QUERY` as a regular expression'],
+            ['--show-all', 'Pick from all versions of the given podspec']
+          ].concat(super)
         end
 
         def initialize(argv)
+          @use_regex = argv.flag?('regex')
           @show_all = argv.flag?('show-all')
-          @spec = argv.shift_argument
-          @spec = @spec.gsub('.podspec', '') unless @spec.nil?
+          @query = argv.shift_argument
+          @query = @query.gsub('.podspec', '') unless @query.nil?
           super
         end
 
         def validate!
           super
-          help! 'A podspec name is required.' unless @spec
+          help! 'A podspec name is required.' unless @query
+          validate_regex!(@query) if @use_regex
         end
 
         def run
+          query = @use_regex ? @query : Regexp.escape(@query)
           filepath = if @show_all
-                       specs = get_path_of_spec(@spec, @show_all).split(/\n/)
+                       specs = get_path_of_spec(query, @show_all).split(/\n/)
                        index = choose_from_array(specs, "Which spec would you like to print [1-#{ specs.count }]? ")
                        specs[index]
-          else
-            get_path_of_spec(@spec)
-          end
+                     else
+                       get_path_of_spec(query)
+                     end
 
           UI.puts File.read(filepath)
         end
@@ -230,38 +243,43 @@ module Pod
         self.summary = 'Edit a spec file.'
 
         self.description = <<-DESC
-          Opens 'NAME.podspec' to be edited.
+          Opens the podspec matching `QUERY` to be edited.
         DESC
 
         self.arguments = [
-          CLAide::Argument.new('NAME', false),
+          CLAide::Argument.new('QUERY', false),
         ]
 
         def self.options
-          [['--show-all', 'Pick which spec to edit from all available' \
-            'versions of the given podspec']].concat(super)
+          [
+            ['--regex', 'Interpret the `QUERY` as a regular expression'],
+            ['--show-all', 'Pick from all versions of the given podspec']
+          ].concat(super)
         end
 
         def initialize(argv)
+          @use_regex = argv.flag?('regex')
           @show_all = argv.flag?('show-all')
-          @spec = argv.shift_argument
-          @spec = @spec.gsub('.podspec', '') unless @spec.nil?
+          @query = argv.shift_argument
+          @query = @query.gsub('.podspec', '') unless @query.nil?
           super
         end
 
         def validate!
           super
-          help! 'A podspec name is required.' unless @spec
+          help! 'A podspec name is required.' unless @query
+          validate_regex!(@query) if @use_regex
         end
 
         def run
+          query = @use_regex ? @query : Regexp.escape(@query)
           if @show_all
-            specs = get_path_of_spec(@spec, @show_all).split(/\n/)
+            specs = get_path_of_spec(query, @show_all).split(/\n/)
             message = "Which spec would you like to edit [1-#{specs.count}]? "
             index = choose_from_array(specs, message)
             filepath = specs[index]
           else
-            filepath = get_path_of_spec(@spec)
+            filepath = get_path_of_spec(query)
           end
 
           exec_editor(filepath.to_s) if File.exist? filepath
@@ -309,6 +327,16 @@ module Pod
       #       subclasses.
 
       private
+
+      # @param [String] query the regular expression string to validate
+      #
+      # @raise if the query is not a valid regular expression
+      #
+      def validate_regex!(query)
+        /#{query}/
+      rescue RegexpError
+        help! 'A valid regular expression is required.'
+      end
 
       # @return [Fixnum] the index of the chosen array item
       #
@@ -407,7 +435,7 @@ module Pod
 
       #--------------------------------------#
 
-      # Templates and github information retrieval for spec create
+      # Templates and GitHub information retrieval for spec create
       #
       # @todo It would be nice to have a template class that accepts options
       #       and uses the default ones if not provided.
@@ -457,6 +485,7 @@ module Pod
           branches        = GitHub.branches(repo['html_url'])
           master_name     = repo['master_branch'] || 'master'
           master          = branches.find { |branch| branch['name'] == master_name }
+          raise Informative, "Unable to find any commits on the master branch for the repository `#{repo['html_url']}`" unless master
           data[:ref_type] = ':commit'
           data[:ref]      = master['commit']['sha']
         else
@@ -554,8 +583,8 @@ Pod::Spec.new do |s|
   # ――― Source Code ―――――――――――――――――――――――――――――――――――――――――――――――――――――――――――――― #
   #
   #  CocoaPods is smart about how it includes source code. For source files
-  #  giving a folder will include any h, m, mm, c & cpp files. For header
-  #  files it will include any header in the folder.
+  #  giving a folder will include any swift, h, m, mm, c & cpp files.
+  #  For header files it will include any header in the folder.
   #  Not including the public_header_files will make all headers public.
   #
 

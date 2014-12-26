@@ -118,6 +118,25 @@ module Pod
         spec.source.should  == { :git => 'https://github.com/lukeredpath/libPusher.git', :commit => '5f482b0693ac2ac1ad85d1aabc27ec7547cc0bc7' }
       end
 
+      it "raises an informative message when the GitHub repository doesn't have any commits" do
+        repo = {
+          'name' => 'QueryKit',
+          'owner' => { 'login' => 'QueryKit' },
+          'html_url' => 'https://github.com/QueryKit/QueryKit',
+          'description' => 'A simple CoreData query language for Swift and Objective-C.',
+          'clone_url' => 'https://github.com/QueryKit/QueryKit.git',
+        }
+        GitHub.expects(:repo).with('QueryKit/QueryKit').returns(repo)
+        GitHub.expects(:tags).with('https://github.com/QueryKit/QueryKit').returns([])
+        GitHub.expects(:branches).with('https://github.com/QueryKit/QueryKit').returns([])
+        GitHub.expects(:user).with('QueryKit').returns('name' => 'QueryKit', 'email' => 'support@querykit.org')
+
+        e = lambda do
+          run_command('spec', 'create', 'https://github.com/QueryKit/QueryKit.git')
+        end.should.raise Pod::Informative
+        e.message.should.match(/Unable to find.*commits.*master branch/)
+      end
+
       it "provides a markdown template if a github repo doesn't have semantic version tags" do
         repo = {
           'name' => 'libPusher',
@@ -155,7 +174,7 @@ module Pod
 
       it 'lints the current working directory' do
         Dir.chdir(fixture('spec-repos') + 'master/Specs/JSONKit/1.4/') do
-          cmd = command('spec', 'lint', '--quick', '--only-errors')
+          cmd = command('spec', 'lint', '--quick', '--allow-warnings')
           cmd.run
           UI.output.should.include 'passed validation'
         end
@@ -164,7 +183,7 @@ module Pod
       # @todo VCR is required in CocoaPods only for this test.
       xit 'lints a remote podspec' do
         Dir.chdir(fixture('spec-repos') + 'master/Specs/JSONKit/1.4/') do
-          cmd = command('spec', 'lint', '--quick', '--only-errors', '--silent', 'https://github.com/CocoaPods/Specs/raw/master/A2DynamicDelegate/2.0.1/A2DynamicDelegate.podspec')
+          cmd = command('spec', 'lint', '--quick', '--allow-warnings', '--silent', 'https://github.com/CocoaPods/Specs/raw/master/A2DynamicDelegate/2.0.1/A2DynamicDelegate.podspec')
           # VCR.use_cassette('linter', :record => :new_episodes) {  }
           lambda { cmd.run }.should.not.raise
         end
@@ -184,8 +203,8 @@ module Pod
         UI.output.should.include 'Missing license type'
       end
 
-      it 'respects the -only--errors option' do
-        cmd = command('spec', 'lint', '--quick', '--only-errors', @spec_path)
+      it 'respects the --allow-warnings option' do
+        cmd = command('spec', 'lint', '--quick', '--allow-warnings', @spec_path)
         lambda { cmd.run }.should.not.raise
         UI.output.should.include 'Missing license type'
       end
@@ -207,6 +226,53 @@ module Pod
       end
     end
 
+    def describe_regex_support(command, raise_class = nil)
+      describe 'RegEx support' do
+        before do
+          @test_source = Source.new(fixture('spec-repos/test_repo'))
+          Source::Aggregate.any_instance.stubs(:sources).returns([@test_source])
+          SourcesManager.updated_search_index = nil
+          yield if block_given?
+        end
+
+        it 'raise when using an invalid regex' do
+          lambda { run_command('spec', command, '--regex', '+') }.should.raise CLAide::Help
+        end
+
+        it 'does not try to validate the query as a regex with plain-text mode' do
+          l = lambda { run_command('spec', command, '+') }
+          if raise_class
+            l.should.raise raise_class
+          else
+            l.should.not.raise CLAide::Help
+          end
+        end
+
+        it 'uses regex search when asked for regex mode' do
+          l = lambda { run_command('spec', command, '--regex', 'Ba(na)+Lib') }
+          if raise_class
+            l.should.raise raise_class
+          else
+            l.should.not.raise
+          end
+          UI.output.should.include? 'BananaLib'
+          UI.output.should.not.include? 'Pod+With+Plus+Signs'
+          UI.output.should.not.include? 'JSONKit'
+        end
+
+        it 'uses plain-text search when not asked for regex mode' do
+          l = lambda { run_command('spec', command, 'Pod+With+Plus+Signs') }
+          if raise_class
+            l.should.raise raise_class
+          else
+            l.should.not.raise
+          end
+          UI.output.should.include? 'Pod+With+Plus+Signs'
+          UI.output.should.not.include? 'BananaLib'
+        end
+      end
+    end
+    
     describe Command::Spec::Which do
       it_should_check_for_existence('which')
       it_should_check_for_ambiguity('which')
@@ -216,6 +282,8 @@ module Pod
         text = 'AFNetworking.podspec'
         UI.output.should.include text.gsub(/\n/, '')
       end
+
+      describe_regex_support('which')
     end
 
     #-------------------------------------------------------------------------#
@@ -223,17 +291,19 @@ module Pod
     describe Command::Spec::Cat do
       it_should_check_for_existence('cat')
       it_should_check_for_ambiguity('cat')
-
+      
       it 'cats the given podspec' do
         lambda { command('spec', 'cat', 'AFNetworking').run }.should.not.raise
-        UI.output.should.include fixture('spec-repos/master/Specs/AFNetworking/2.3.1/AFNetworking.podspec.json').read
+        UI.output.should.include fixture('spec-repos/master/Specs/AFNetworking/2.4.1/AFNetworking.podspec.json').read
       end
 
       it 'cats the first podspec from all podspecs' do
         UI.next_input = "1\n"
         run_command('spec', 'cat', '--show-all', 'AFNetworking')
-        UI.output.should.include fixture('spec-repos/master/Specs/AFNetworking/2.3.1/AFNetworking.podspec.json').read
+        UI.output.should.include fixture('spec-repos/master/Specs/AFNetworking/2.4.1/AFNetworking.podspec.json').read
       end
+
+      describe_regex_support('cat')
     end
 
     #-------------------------------------------------------------------------#
@@ -249,7 +319,7 @@ module Pod
 
       it_should_check_for_existence('edit')
       it_should_check_for_ambiguity('edit')
-
+      
       it 'would execute the editor specified in ENV with the given podspec' do
         ENV['EDITOR'] = 'podspeceditor'
         lambda { command('spec', 'edit', 'AFNetworking').run }.should.raise SystemExit
@@ -276,6 +346,8 @@ module Pod
         lambda { command('spec', 'edit', 'AFNetworking').run }.should.raise Informative
         File.unstub(:exists?)
       end
+
+      describe_regex_support('edit', SystemExit) { ENV['EDITOR'] = 'podspeceditor' }
     end
 
     #-------------------------------------------------------------------------#
@@ -292,7 +364,7 @@ module Pod
 
         it 'returns the path of the specification with the given name' do
           path = @sut.send(:get_path_of_spec, 'AFNetworking')
-          path.should == fixture('spec-repos') + 'master/Specs/AFNetworking/2.3.1/AFNetworking.podspec.json'
+          path.should == fixture('spec-repos') + 'master/Specs/AFNetworking/2.4.1/AFNetworking.podspec.json'
         end
 
       end

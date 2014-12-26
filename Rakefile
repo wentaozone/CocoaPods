@@ -1,44 +1,19 @@
-REQUIRED_COMMANDS = %w[ git hg ]
-
-# Task check_requirements
-#-----------------------------------------------------------------------------#
-desc 'Verifies that the required third-party commands are available'
-task :check_requirements do
-  has_all_requirements = REQUIRED_COMMANDS.inject(true) do |has_requirements, required_command|
-    result = has_required_binary?(required_command)
-    puts red("Missing required command: #{required_command}. You may need to install it.") unless result
-    has_requirements && result
-  end
-  raise unless has_all_requirements
-end
-
 # Bootstrap task
 #-----------------------------------------------------------------------------#
 
 desc "Initializes your working copy to run the specs"
-task :bootstrap, [:use_bundle_dir?] => [:check_requirements] do |t, args|
+task :bootstrap, :use_bundle_dir? do |_, args|
   title "Environment bootstrap"
 
   puts "Updating submodules"
   execute_command "git submodule update --init --recursive"
 
-  require 'rbconfig'
-  if RbConfig::CONFIG['prefix'] == '/System/Library/Frameworks/Ruby.framework/Versions/2.0/usr'
-    # Workaround Apple's mess. See https://github.com/CocoaPods/Xcodeproj/issues/137
-    #
-    # TODO This is not as correct as actually fixing the issue, figure out if we
-    # can override these build flags:
-    #
-    # ENV['DLDFLAGS'] = '-undefined dynamic_lookup -multiply_defined suppress'
-    ENV['ARCHFLAGS'] = '-Wno-error=unused-command-line-argument-hard-error-in-future'
-  end
-
   if system('which bundle')
     puts "Installing gems"
     if args[:use_bundle_dir?]
-      execute_command "env XCODEPROJ_BUILD=1 bundle install --path ./travis_bundle_dir"
+      execute_command "env bundle install --path ./travis_bundle_dir"
     else
-      execute_command "env XCODEPROJ_BUILD=1 bundle install"
+      execute_command "env bundle install"
     end
   else
     $stderr.puts "\033[0;31m" \
@@ -129,7 +104,7 @@ begin
     #--------------------------------------#
 
     desc "Run the functional specs"
-    task :functional, [:spec] => :unpack_fixture_tarballs do |t, args|
+    task :functional, [:spec] => :unpack_fixture_tarballs do |_t, args|
       args.with_defaults(:spec => '**/*')
       sh "bundle exec bacon #{specs("functional/#{args[:spec]}")}"
     end
@@ -137,8 +112,8 @@ begin
     #--------------------------------------#
 
     desc "Run the integration spec"
-    task :integration => :check_requirements do
-      unless File.exists?('spec/cocoapods-integration-specs')
+    task :integration do
+      unless File.exist?('spec/cocoapods-integration-specs')
         $stderr.puts red("Integration files not checked out. Run `rake bootstrap`")
         exit 1
       end
@@ -152,21 +127,21 @@ begin
     # The specs helper interfere with the integration 2 specs and thus they need
     # to be run separately.
     #
-    task :all => [:unpack_fixture_tarballs, :check_requirements] do
+    task :all => :unpack_fixture_tarballs do
       ENV['GENERATE_COVERAGE'] = 'true'
       puts "\033[0;32mUsing #{`ruby --version`}\033[0m"
 
       title 'Running the specs'
-      sh    "bundle exec bacon #{specs('**/*')}"
+      sh "bundle exec bacon #{specs('**/*')}"
 
       title 'Running Integration tests'
-      sh    "bundle exec bacon spec/integration.rb"
+      sh "bundle exec bacon spec/integration.rb"
 
       title 'Running examples'
       Rake::Task['examples:build'].invoke
 
       title 'Running RuboCop'
-      Rake::Task['rubocop'].invoke if RUBY_VERSION >= '1.9.3'
+      Rake::Task['rubocop'].invoke
     end
 
     desc "Rebuild all the fixture tarballs"
@@ -196,15 +171,20 @@ begin
 
     desc "Rebuilds integration fixtures"
     task :rebuild_integration_fixtures do
+      if `which hg` && !$?.success?
+        puts red('[!] Mercurial (`hg`) must be installed to rebuild the integration fixtures.')
+        exit 1
+      end
       title 'Running Integration tests'
       sh 'rm -rf spec/cocoapods-integration-specs/tmp'
+      title 'Building all the fixtures'
       puts `bundle exec bacon spec/integration.rb`
 
       title 'Storing fixtures'
       # Copy the files to the files produced by the specs to the after folders
       FileList['tmp/*'].each do |source|
-        destination = "spec/cocoapods-integration-specs/#{source.gsub('tmp/','')}/after"
-        if File.exists?(destination)
+        destination = "spec/cocoapods-integration-specs/#{source.gsub('tmp/', '')}/after"
+        if File.exist?(destination)
           sh "rm -rf #{destination}"
           sh "mv #{source} #{destination}"
         end
@@ -245,26 +225,39 @@ begin
 
     desc "Build all examples"
     task :build do
-      Dir.chdir("examples/AFNetworking Example") do
-        puts "Installing Pods"
-        # pod_command = ENV['FROM_GEM'] ? 'sandbox-pod' : 'bundle exec ../../bin/sandbox-pod'
-        # TODO: The sandbox is blocking local git repos making bundler crash
-        pod_command = ENV['FROM_GEM'] ? 'sandbox-pod' : 'bundle exec ../../bin/pod'
+      Bundler.require 'xcodeproj', :development
+      Dir['examples/*'].each do |dir|
+        Dir.chdir(dir) do
+          puts "Example: #{dir}"
 
-        execute_command "rm -rf Pods"
-        execute_command "#{pod_command} install --verbose --no-repo-update"
+          puts "    Installing Pods"
+          # pod_command = ENV['FROM_GEM'] ? 'sandbox-pod' : 'bundle exec ../../bin/sandbox-pod'
+          # TODO: The sandbox is blocking local git repos making bundler crash
+          pod_command = ENV['FROM_GEM'] ? 'sandbox-pod' : 'bundle exec ../../bin/pod'
 
-        puts "Building example: AFNetworking Mac Example"
-        execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking Example' clean build"
+          execute_command "rm -rf Pods"
+          execute_command "#{pod_command} install --verbose --no-repo-update"
 
-        puts "Building example: AFNetworking iOS Example"
-        xcode_version = `xcodebuild -version`.scan(/Xcode (.*)\n/).first.first
-        major_version = xcode_version.split('.').first.to_i
-        # Specifically build against the simulator SDK so we don't have to deal with code signing.
-        if  major_version > 5
-          execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking iOS Example' clean build ONLY_ACTIVE_ARCH=NO -destination 'platform=iOS Simulator,name=iPhone 6'"
-        else
-          execute_command "xcodebuild -workspace 'AFNetworking Examples.xcworkspace' -scheme 'AFNetworking iOS Example' clean build ONLY_ACTIVE_ARCH=NO -destination 'platform=iOS Simulator,name=iPhone Retina (4-inch)'"
+          workspace_path = 'Examples.xcworkspace'
+          workspace = Xcodeproj::Workspace.new_from_xcworkspace(workspace_path)
+          workspace.schemes.each do |scheme_name, project_path|
+            next if scheme_name == 'Pods'
+            puts "    Building scheme: #{scheme_name}"
+
+            project = Xcodeproj::Project.open(project_path)
+            target = project.targets.first
+
+            case target
+            when :osx
+              execute_command "xcodebuild -workspace '#{workspace_path}' -scheme '#{scheme_name}' clean build"
+            when :ios
+              xcode_version = `xcodebuild -version`.scan(/Xcode (.*)\n/).first.first
+              major_version = xcode_version.split('.').first.to_i
+              # Specifically build against the simulator SDK so we don't have to deal with code signing.
+              simulator_name = major_version > 5 ? 'iPhone 6' : 'iPhone Retina (4-inch)'
+              execute_command "xcodebuild -workspace '#{workspace_path}' -scheme '#{scheme_name}' clean build ONLY_ACTIVE_ARCH=NO -destination 'platform=iOS Simulator,name=#{simulator_name}"
+            end
+          end
         end
       end
     end
@@ -279,22 +272,21 @@ begin
 
   #-- Rubocop ----------------------------------------------------------------#
 
-  if RUBY_VERSION >= '1.9.3'
-    require 'rubocop/rake_task'
-
-    RuboCop::RakeTask.new(:rubocop) do |task|
-      task.patterns = ['lib', 'spec']
-    end
+  desc 'Check code against RuboCop rules'
+  task :rubocop do
+    sh 'bundle exec rubocop lib spec Rakefile'
   end
 
 rescue LoadError, NameError => e
   $stderr.puts "\033[0;31m" \
     '[!] Some Rake tasks haven been disabled because the environment' \
-    ' couldn’t be loaded. Be sure to run `rake bootstrap` first.' \
-    "\e[0m"
-  $stderr.puts e.message
-  $stderr.puts e.backtrace
-  $stderr.puts
+    ' couldn’t be loaded. Be sure to run `rake bootstrap` first or use the ' \
+    "VERBOSE environment variable to see errors.\e[0m"
+  if ENV['VERBOSE']
+    $stderr.puts e.message
+    $stderr.puts e.backtrace
+    $stderr.puts
+  end
 end
 
 # Helpers
@@ -326,9 +318,3 @@ end
 def red(string)
   "\033[0;31m#{string}\e[0m"
 end
-
-def has_required_binary?(name)
-  `which #{name}`
-  $?.success?
-end
-

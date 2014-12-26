@@ -9,12 +9,24 @@ module Pod
       # @return [void]
       #
       def install!
-        UI.message "- Installing target `#{library.name}` #{library.platform}" do
+        unless target.should_build?
+          add_resources_bundle_targets
+          return
+        end
+
+        UI.message "- Installing target `#{target.name}` #{target.platform}" do
           add_target
           create_support_files_dir
-          add_files_to_build_phases
           add_resources_bundle_targets
+          add_files_to_build_phases
           create_xcconfig_file
+          if target.requires_frameworks?
+            create_info_plist_file
+            create_module_map
+            create_umbrella_header do |generator|
+              generator.imports += target.file_accessors.flat_map(&:public_headers).map(&:basename)
+            end
+          end
           create_prefix_header
           create_dummy_source
         end
@@ -33,15 +45,44 @@ module Pod
       # @return [void]
       #
       def add_files_to_build_phases
-        library.file_accessors.each do |file_accessor|
+        target.file_accessors.each do |file_accessor|
           consumer = file_accessor.spec_consumer
-          flags = compiler_flags_for_consumer(consumer)
-          all_source_files = file_accessor.source_files
-          regular_source_files = all_source_files.reject { |sf| sf.extname == '.d' }
-          regular_file_refs = regular_source_files.map { |sf| project.reference_for_path(sf) }
-          target.add_file_references(regular_file_refs, flags)
-          other_file_refs = (all_source_files - regular_source_files).map { |sf| project.reference_for_path(sf) }
-          target.add_file_references(other_file_refs, nil)
+
+          headers = file_accessor.headers
+          public_headers = file_accessor.public_headers
+          other_source_files = file_accessor.source_files.select { |sf| sf.extname == '.d' }
+
+          {
+            true => file_accessor.arc_source_files,
+            false => file_accessor.non_arc_source_files,
+          }.each do |arc, files|
+            files = files - headers - other_source_files
+            flags = compiler_flags_for_consumer(consumer, arc)
+            regular_file_refs = files.map { |sf| project.reference_for_path(sf) }
+            native_target.add_file_references(regular_file_refs, flags)
+          end
+
+          header_file_refs = headers.map { |sf| project.reference_for_path(sf) }
+          native_target.add_file_references(header_file_refs) do |build_file|
+            # Set added headers as public if needed
+            if target.requires_frameworks?
+              if public_headers.include?(build_file.file_ref.real_path)
+                build_file.settings ||= {}
+                build_file.settings['ATTRIBUTES'] = ['Public']
+              end
+            end
+          end
+
+          other_file_refs = other_source_files.map { |sf| project.reference_for_path(sf) }
+          native_target.add_file_references(other_file_refs, nil)
+
+          next unless target.requires_frameworks?
+
+          resource_refs = file_accessor.resources.flatten.map do |res|
+            project.reference_for_path(res)
+          end
+
+          native_target.add_resources(resource_refs)
         end
       end
 
@@ -53,22 +94,37 @@ module Pod
       # @return [void]
       #
       def add_resources_bundle_targets
-        library.file_accessors.each do |file_accessor|
+        target.file_accessors.each do |file_accessor|
           file_accessor.resource_bundles.each do |bundle_name, paths|
-            # Add a dependency on an existing Resource Bundle target if possible
-            if bundle_target = project.targets.find { |target| target.name == bundle_name }
-              target.add_dependency(bundle_target)
-              next
-            end
             file_references = paths.map { |sf| project.reference_for_path(sf) }
-            bundle_target = project.new_resources_bundle(bundle_name, file_accessor.spec_consumer.platform_name)
+            label = target.resources_bundle_target_label(bundle_name)
+            bundle_target = project.new_resources_bundle(label, file_accessor.spec_consumer.platform_name)
+            bundle_target.product_reference.tap do |bundle_product|
+              bundle_file_name = "#{bundle_name}.bundle"
+              bundle_product.name = bundle_file_name
+              bundle_product.path = bundle_file_name
+            end
             bundle_target.add_resources(file_references)
 
-            library.user_build_configurations.each do |bc_name, type|
+            target.user_build_configurations.each do |bc_name, type|
               bundle_target.add_build_configuration(bc_name, type)
             end
 
-            target.add_dependency(bundle_target)
+            target.resource_bundle_targets << bundle_target
+
+            if target.should_build?
+              native_target.add_dependency(bundle_target)
+              if target.requires_frameworks?
+                native_target.add_resources([bundle_target.product_reference])
+              end
+            end
+
+            bundle_target.build_configurations.each do |c|
+              c.build_settings['PRODUCT_NAME'] = bundle_name
+              if target.requires_frameworks?
+                c.build_settings['CONFIGURATION_BUILD_DIR'] = target.configuration_build_dir
+              end
+            end
           end
         end
       end
@@ -78,17 +134,17 @@ module Pod
       # @return [void]
       #
       def create_xcconfig_file
-        path = library.xcconfig_path
-        public_gen = Generator::XCConfig::PublicPodXCConfig.new(library)
+        path = target.xcconfig_path
+        public_gen = Generator::XCConfig::PublicPodXCConfig.new(target)
         public_gen.save_as(path)
         add_file_to_support_group(path)
 
-        path = library.xcconfig_private_path
-        private_gen = Generator::XCConfig::PrivatePodXCConfig.new(library, public_gen.xcconfig)
+        path = target.xcconfig_private_path
+        private_gen = Generator::XCConfig::PrivatePodXCConfig.new(target, public_gen.xcconfig)
         private_gen.save_as(path)
         xcconfig_file_ref = add_file_to_support_group(path)
 
-        target.build_configurations.each do |c|
+        native_target.build_configurations.each do |c|
           c.base_configuration_reference = xcconfig_file_ref
         end
       end
@@ -100,13 +156,13 @@ module Pod
       # @return [void]
       #
       def create_prefix_header
-        path = library.prefix_header_path
-        generator = Generator::PrefixHeader.new(library.file_accessors, library.platform)
-        generator.imports << library.target_environment_header_path.basename
+        path = target.prefix_header_path
+        generator = Generator::PrefixHeader.new(target.file_accessors, target.platform)
+        generator.imports << target.target_environment_header_path.basename
         generator.save_as(path)
         add_file_to_support_group(path)
 
-        target.build_configurations.each do |c|
+        native_target.build_configurations.each do |c|
           relative_path = path.relative_path_from(project.path.dirname)
           c.build_settings['GCC_PREFIX_HEADER'] = relative_path.to_s
         end
@@ -152,10 +208,11 @@ module Pod
       #
       # @return [String] The compiler flags.
       #
-      def compiler_flags_for_consumer(consumer)
+      def compiler_flags_for_consumer(consumer, arc)
         flags = consumer.compiler_flags.dup
-        if consumer.requires_arc
-          flags << '-fobjc-arc'
+        if !arc
+          flags << '-fno-objc-arc'
+        else
           platform_name = consumer.platform_name
           spec_deployment_target = consumer.spec.deployment_target(platform_name)
           if spec_deployment_target.nil? || Version.new(spec_deployment_target) < ENABLE_OBJECT_USE_OBJC_FROM[platform_name]
@@ -176,8 +233,8 @@ module Pod
       # @return [PBXFileReference] the file reference of the added file.
       #
       def add_file_to_support_group(path)
-        pod_name = library.pod_name
-        dir = library.support_files_dir
+        pod_name = target.pod_name
+        dir = target.support_files_dir
         group = project.pod_support_files_group(pod_name, dir)
         group.new_file(path)
       end

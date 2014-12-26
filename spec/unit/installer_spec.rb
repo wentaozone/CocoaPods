@@ -50,9 +50,11 @@ module Pod
       before do
         @installer.stubs(:resolve_dependencies)
         @installer.stubs(:download_dependencies)
+        @installer.stubs(:determine_dependency_product_types)
         @installer.stubs(:generate_pods_project)
         @installer.stubs(:integrate_user_project)
         @installer.stubs(:run_plugins_post_install_hooks)
+        @installer.stubs(:ensure_plugins_are_installed!)
         @installer.stubs(:perform_post_install_actions)
       end
 
@@ -74,6 +76,7 @@ module Pod
         @installer.stubs(:run_pre_install_hooks)
         @installer.stubs(:install_file_references)
         @installer.stubs(:install_libraries)
+        @installer.stubs(:set_target_dependencies)
         @installer.stubs(:write_lockfiles)
         @installer.stubs(:aggregate_targets).returns([])
         @installer.unstub(:generate_pods_project)
@@ -109,6 +112,37 @@ module Pod
         @installer.send(:warn_for_deprecations)
         UI.warnings.should.include 'deprecated in favor of AFNetworking'
         UI.warnings.should.include 'BlocksKit has been deprecated'
+      end
+
+    end
+    
+    #-------------------------------------------------------------------------#
+
+    describe '#determine_dependency_product_type' do
+
+      it 'does propagate that frameworks are required to all pod targets' do
+        fixture_path = ROOT + 'spec/fixtures'
+        config.repos_dir = fixture_path + 'spec-repos'
+        podfile = Pod::Podfile.new do
+          platform :ios, '8.0'
+          xcodeproj 'SampleProject/SampleProject'
+          pod 'BananaLib',       :path => (fixture_path + 'banana-lib').to_s
+          pod 'OrangeFramework', :path => (fixture_path + 'orange-framework').to_s
+          pod 'monkey',          :path => (fixture_path + 'monkey').to_s
+        end
+        lockfile = generate_lockfile
+        config.integrate_targets = false
+
+        @installer = Installer.new(config.sandbox, podfile, lockfile)
+        @installer.install!
+
+        target = @installer.aggregate_targets.first
+        target.requires_frameworks?.should == true
+        target.pod_targets.select(&:requires_frameworks?).map(&:name).sort.should == [
+          'Pods-BananaLib',
+          'Pods-OrangeFramework',
+          'Pods-monkey',
+        ]
       end
 
     end
@@ -202,6 +236,23 @@ module Pod
     #-------------------------------------------------------------------------#
 
     describe 'Downloading dependencies' do
+
+      it 'installs head pods' do
+        podfile = Podfile.new do
+          platform :osx, '10.10'
+          pod 'CargoBay', '2.1.0'
+          pod 'AFNetworking/NSURLSession', :head
+        end
+        @installer.stubs(:podfile).returns(podfile)
+        @installer.stubs(:lockfile).returns(nil)
+        Downloader::Git.any_instance.expects(:download_head).once
+        Downloader::Git.any_instance.expects(:checkout_options).returns({})
+        @installer.prepare
+        @installer.resolve_dependencies
+        @installer.send(:root_specs).sort_by(&:name).map(&:version).map(&:head?).should == [true, nil]
+        @installer.download_dependencies
+        UI.output.should.include 'HEAD based on 2.4.1'
+      end
 
       describe '#install_pod_sources' do
 
@@ -391,6 +442,26 @@ module Pod
 
       describe '#set_target_dependencies' do
 
+        it 'sets resource bundles for not build pods as target dependencies of the user target' do
+          spec = fixture_spec('banana-lib/BananaLib.podspec')
+          target_definition = Podfile::TargetDefinition.new(:default, @installer.podfile)
+          pod_target = PodTarget.new([spec], target_definition, config.sandbox)
+          pod_target.stubs(:resource_bundle_targets).returns(['dummy'])
+          pod_target.stubs(:should_build? => false)
+          target = AggregateTarget.new(target_definition, config.sandbox)
+          
+          mock_target = mock('PodNativeTarget')
+          mock_target.expects(:add_dependency).with('dummy')
+
+          mock_project = mock('PodsProject', :frameworks_group => mock('FrameworksGroup'))
+          @installer.stubs(:pods_project).returns(mock_project)
+
+          target.stubs(:native_target).returns(mock_target)
+          target.stubs(:pod_targets).returns([pod_target])
+          @installer.stubs(:aggregate_targets).returns([target])
+          @installer.send(:set_target_dependencies)
+        end
+
         xit 'sets the pod targets as dependencies of the aggregate target' do
 
         end
@@ -484,8 +555,35 @@ module Pod
       it 'runs plugins post install hook' do
         context = stub
         Installer::HooksContext.expects(:generate).returns(context)
-        HooksManager.expects(:run).with(:post_install, context)
+        HooksManager.expects(:run).with(:post_install, context, {})
         @installer.send(:run_plugins_post_install_hooks)
+      end
+
+      it 'only runs the podfile-specified post-install hooks' do
+        context = stub
+        Installer::HooksContext.expects(:generate).returns(context)
+        plugins_hash = {'cocoapods-keys' => {'keyring' => 'Eidolon'}}
+        @installer.podfile.stubs(:plugins).returns(plugins_hash)
+        HooksManager.expects(:run).with(:post_install, context, plugins_hash)
+        @installer.send(:run_plugins_post_install_hooks)
+      end
+
+      it 'raises if a podfile-specified plugin is not loaded' do
+        @installer.podfile.stubs(:plugins).returns('cocoapods-keys' => {})
+        Command::PluginManager.stubs(:specifications).returns([])
+        should.raise Informative do
+          @installer.send(:ensure_plugins_are_installed!)
+        end.message.should.match /require.*plugin.*`cocoapods-keys`/
+      end
+
+      it 'does not raise if all podfile-specified plugins are loaded' do
+        @installer.podfile.stubs(:plugins).returns('cocoapods-keys' => {})
+        spec = stub
+        spec.stubs(:name).returns('cocoapods-keys')
+        Command::PluginManager.stubs(:specifications).returns([spec])
+        should.not.raise do
+          @installer.send(:ensure_plugins_are_installed!)
+        end
       end
     end
 

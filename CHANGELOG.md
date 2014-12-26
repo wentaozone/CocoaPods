@@ -2,13 +2,326 @@
 
 To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides/installing_cocoapods.html).
 
-## Master
+To install release candidates run `[sudo] gem install cocoapods --pre`
 
-##### Enhacements
+## 0.36.0.beta.1
 
-* The `pod push` has been removed as it has been deprecated in favour of `pod
-  repo push` in CocoaPods 0.33.  
+[CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.35.0...0.36.0.beta.1)
+• [CocoaPods-Core](https://github.com/CocoaPods/Core/compare/0.35.0...0.36.0.beta.1)
+• [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.20.2...0.21.0)
+• [CLAide](https://github.com/CocoaPods/CLAide/compare/v0.7.0...0.8.0)
+• [Molinillo](https://github.com/CocoaPods/Molinillo/compare/0.1.2...0.2.0)
+• [cocoapods-downloader](https://github.com/CocoaPods/cocoapods-downloader/compare/0.8.0...0.8.1)
+• [cocoapods-try](https://github.com/CocoaPods/cocoapods-try/compare/0.4.2...0.4.3)
+• [cocoapods-trunk](https://github.com/CocoaPods/cocoapods-trunk/compare/0.4.1...0.5.0)
+• [cocoapods-plugins](https://github.com/CocoaPods/cocoapods-plugins/compare/0.3.2...0.4.0)
+
+##### Highlighted Enhancement That Needs Testing
+
+* Support Frameworks & Swift: CocoaPods now recognizes Swift source files and
+  builds dynamic frameworks when necessary. A project can explicitly
+  opt-in via `use_frameworks!` in the Podfile, or if any dependency contains
+  Swift code, all pods for that target will be integrated as frameworks.
+
+  As a pod author, you can change the module name of the built framework by
+  specifying a `module_name` in the podspec. The built frameworks are embedded into
+  the host application with a new shell script build phase in the user's
+  project allowing configuration-dependent pods.
+
+  [Marius Rackwitz](https://github.com/mrackwitz)
+  [#2835](https://github.com/CocoaPods/CocoaPods/issues/2835)
+
+##### Breaking
+
+* Bundle Resources into Frameworks: Previously all resources were compiled and
+  copied into the `mainBundle`. Now Pods have to use
+  `[NSBundle bundleForClass:<#Class from Pod#>]` to access provided resources
+  relative to the bundle.
+
+  [Boris Bügling](https://github.com/neonichu)
+  [#2835](https://github.com/CocoaPods/CocoaPods/issues/2730)
+
+* Only the hooks specified by usage of the `plugin` directive of the `Podfile`
+  will be run. Additionally, plugins that depend on hooks will have to update to
+  specify their 'plugin name' when registering the hooks in order to make it
+  possible for those hooks to be run.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2640](https://github.com/CocoaPods/CocoaPods/issues/2640)
+
+##### Enhancements
+
+* Do not generate targets for Pods without sources.  
+  [Boris Bügling](https://github.com/neonichu)
+  [#2918](https://github.com/CocoaPods/CocoaPods/issues/2918)
+
+* Show the name of the source for each hook that is run in verbose mode.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2639](https://github.com/CocoaPods/CocoaPods/issues/2639)
+
+* Move pods' private headers to `Headers/Private` from `Headers/Build`.
+  Since some SCM ignore templates include `build` by default, this makes it
+  easier to check in the `Pods/` directory.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2623](https://github.com/CocoaPods/CocoaPods/issues/2623)
+
+* Validate that a specification's `public_header_files` and
+  `private_header_files` file patterns only match header files.
+  Also, validate that all file patterns, if given, match at least one file.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2914](https://github.com/CocoaPods/CocoaPods/issues/2914)
+
+* Installer changed to organize a development pod's source and resource files
+  into subgroups reflecting their organization in the filesystem.  
+  [Imre mihaly](https://github.com/imihaly)
+
+##### Bug Fixes
+
+* Fix resource bundles for not build targets.  
+  [Boris Bügling](https://github.com/neonichu)
+  [#2934](https://github.com/CocoaPods/CocoaPods/issues/2934)
+
+* Fix updating a pod that has subspec dependencies.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2879](https://github.com/CocoaPods/CocoaPods/issues/2879)
+
+* Restore the `#define`s in the environment header when the `--no-integrate`
+  installation option is used.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2876](https://github.com/CocoaPods/CocoaPods/issues/2876)
+
+* Fix issues when trying to discover the xcodeproj automatically
+  but the current path contains special characters (`[`,`]`,`{`,`}`,`*`,`?`).  
+  [Olivier Halligon](https://github.com/AliSoftware)
+  [#2852](https://github.com/CocoaPods/CocoaPods/issues/2852)
+
+* Fix linting subspecs that have a higher deployment target than the root
+  spec.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#1919](https://github.com/CocoaPods/CocoaPods/issues/1919)
+
+* Fix the reading of podspecs that come from the `:git`, `:svn`, ':http', or
+  `:hg` options in your `Podfile` that used context-dependent ruby code, such as
+  reading a file to determine the specification version.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2875](https://github.com/CocoaPods/CocoaPods/issues/2875)
+
+* Fix the updating of `:git`, `:svn`, and `:hg` dependencies when updating all
+  pods.  
+  [Samuel Giddins](https://github.com/CocoaPods/CocoaPods/issues/2859)
+  [#2859](https://github.com/CocoaPods/CocoaPods/issues/2859)
+
+* Fix an issue when a user doesn't yet have any spec repositories configured.  
+  [Boris Bügling](https://github.com/neonichu)
+
+* Fix an issue updating repositories when another spec repository doesn't
+  have a remote.  
+  [Kyle Fuller](https://github.com/kylef)
+  [#2965](https://github.com/CocoaPods/CocoaPods/issues/2965)
+
+
+## 0.35.0
+
+[CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.34.4...0.35.0)
+• [CocoaPods-Core](https://github.com/CocoaPods/Core/compare/0.34.4...0.35.0)
+• [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.19.4...0.20.2)
+• [cocoapods-downloader](https://github.com/CocoaPods/cocoapods-downloader/compare/0.7.2...0.8.0)
+
+For more details, see :memo: [CocoaPods 0.35](http://blog.cocoapods.org/CocoaPods-0.35/) on our blog.
+
+##### Enhancements
+
+* Allow the specification of file patterns for the Podspec's `requires_arc`
+  attribute.  
+  [Kyle Fuller](https://github.com/kylef)
+  [Samuel Giddins](https://github.com/segiddins)
+  [#532](https://github.com/CocoaPods/CocoaPods/issues/532)
+
+* From now on, pods installed directly from their repositories will be recorded
+  in the `Podfile.lock` file and will be guaranteed to be checked-out using the
+  same revision on subsequent installations. Examples of this are when using
+  the `:git`, `:svn`, or `:hg` options in your `Podfile`.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#1058](https://github.com/CocoaPods/CocoaPods/issues/1058)
+
+##### Bug Fixes
+
+* Fix an output formatting issue with various commands like `pod search`
+  and `pod trunk`.
+  [Olivier Halligon](https://github.com/AliSoftware)
+  [#2603](https://github.com/CocoaPods/CocoaPods/issues/2603)
+
+* Show a helpful error message if the old resolver incorrectly activated a
+  pre-release version that now leads to a version conflict.  
+  [Samuel Giddins](https://github.com/segiddins)
+
+* Provides a user friendly message when using `pod spec create` with a
+  repository that doesn't yet have any commits.  
+  [Kyle Fuller](https://github.com/kylef)
+  [#2803](https://github.com/CocoaPods/CocoaPods/issues/2803)
+
+* Fixes an issue with integrating into projects where there is a slash in the
+  build configuration name.  
+  [Kyle Fuller](https://github.com/kylef)
+  [#2767](https://github.com/CocoaPods/CocoaPods/issues/2767)
+
+* Pods will use `CLANG_ENABLE_OBJC_ARC = 'YES'` instead of
+  `CLANG_ENABLE_OBJC_ARC = 'NO'`. For pods with `requires_arc = false` the
+  `-fno-objc-arc` flag will be specified for the all source files.  
+  [Hugo Tunius](https://github.com/K0nserv)
+  [#2262](https://github.com/CocoaPods/CocoaPods/issues/2262)
+
+* Fixed an issue that Core Data mapping models where not compiled when
+  copying resources to main application bundle.  
+  [Yan Rabovik](https://github.com/rabovik)
+
+##### Enhancements
+
+* `pod search`, `pod spec which`, `pod spec cat` and `pod spec edit`
+  now use plain text search by default instead of a regex. Especially
+  `pod search UIView+UI` now searches for pods containing exactly `UIView+UI`
+  in their name, not trying to interpret the `+` as a regular expression.
+  _Note: You can still use a regular expression with the new `--regex` flag that has
+  been added to these commands, e.g. `pod search --regex "(NS|UI)Color"`._
+  [Olivier Halligon](https://github.com/AliSoftware)
+  [Core#188](https://github.com/CocoaPods/Core/issues/188)
+
+* Use `--allow-warnings` rather than `--error-only` for pod spec validation
+  [Daniel Tomlinson](https://github.com/DanielTomlinson)
+  [#2820](https://github.com/CocoaPods/CocoaPods/issues/2820)
+
+## 0.35.0.rc2
+
+##### Enhancements
+
+* Allow the resolver to fail faster when there are unresolvable conflicts
+  involving the Lockfile.  
+  [Samuel Giddins](https://github.com/segiddins)
+
+##### Bug Fixes
+
+* Allows pre-release spec versions when a requirement has an external source
+  specified.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2768](https://github.com/CocoaPods/CocoaPods/issues/2768)
+
+* We no longer require git version 1.7.5 or greater.  
+  [Kyle Fuller](https://github.com/kylef)
+
+* Fix the usage of `:head` pods.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2789](https://github.com/CocoaPods/CocoaPods/issues/2789)
+
+* Show a more informative message when attempting to lint a spec whose
+  source could not be downloaded.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2667](https://github.com/CocoaPods/CocoaPods/issues/2667)
+  [#2759](https://github.com/CocoaPods/CocoaPods/issues/2759)
+
+## 0.35.0.rc1
+
+##### Highlighted Enhancements That Need Testing
+
+* The `Resolver` has been completely rewritten to use
+  [Molinillo](https://github.com/CocoaPods/Molinillo), an iterative dependency
+  resolution algorithm that automatically resolves version conflicts.
+  The order in which dependencies are declared in the `Podfile` no longer has
+  any effect on the resolution process.
+
+  You should ensure that `pod install`, `pod update` and `pod update [NAME]`
+  work as expected and install the correct versions of your pods during
+  this RC1 release.
+  [Samuel Giddins](https://github.com/segiddins)
+  [#978](https://github.com/CocoaPods/CocoaPods/issues/978)
+  [#2002](https://github.com/CocoaPods/CocoaPods/issues/2002)
+
+##### Breaking
+
+* Support for older versions of Ruby has been dropped and CocoaPods now depends
+  on Ruby 2.0.0 or greater. This is due to the release of Xcode 6.0 which has
+  dropped support for OS X 10.8, which results in the minimum version of
+  Ruby pre-installed on OS X now being 2.0.0.
+
+  If you are using a custom installation of Ruby  older than 2.0.0, you
+  will need to update. Or even better, migrate to system Ruby.  
+  [Kyle Fuller](https://github.com/kylef)
+
+* Attempts to resolve circular dependencies will now raise an exception.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [Molinillo#6](https://github.com/CocoaPods/Molinillo/issues/6)
+
+##### Enhancements
+
+* The use of implicit sources has been un-deprecated. By default, all available
+  spec-repos will be used. There should only be a need to specify explicit
+  sources if you want to specifically _exclude_ certain spec-repos, such as the
+  `master` spec-repo, if you want to declare the order of spec look-up
+  precedence, or if you want other users of a Podfile to automatically have a
+  spec-repo cloned on `pod install`.  
+  [Eloy Durán](https://github.com/alloy)
+
+* The `pod push` command has been removed as it has been deprecated in favour of
+  `pod repo push` in CocoaPods 0.33.  
   [Fabio Pelosin](https://github.com/fabiopelosin)
+
+* Refactorings in preparation to framework support, which could break usage
+  of the Hooks API.  
+  [Marius Rackwitz](https://github.com/mrackwitz)
+  [#2461](https://github.com/CocoaPods/CocoaPods/issues/2461)
+
+* Implicit dependencies are now locked, so simply running `pod install` will not
+  cause them to be updated when they shouldn't be.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2318](https://github.com/CocoaPods/CocoaPods/issues/2318)
+  [#2506](https://github.com/CocoaPods/CocoaPods/issues/2506)
+
+* Pre-release versions are only considered in the resolution process when there
+  are dependencies that explicitly reference pre-release requirements.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#1489](https://github.com/CocoaPods/CocoaPods/issues/1489)
+
+* Only setup the master specs repo if required.  
+  [Daniel Tomlinson](https://github.com/DanielTomlinson)
+  [#2562](https://github.com/CocoaPods/CocoaPods/issues/2562)
+
+* `Sandbox::FileAccessor` now optionally includes expanded paths of headers of
+  vendored frameworks in `public_headers`.  
+  [Eloy Durán](https://github.com/alloy)
+  [#2722](https://github.com/CocoaPods/CocoaPods/pull/2722)
+
+* Analysis is now halted and the user informed when there are multiple different
+  external sources for dependencies with the same root name.
+  The user is also now warned when there are duplicate dependencies in the
+  Podfile.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2738](https://github.com/CocoaPods/CocoaPods/issues/2738)
+
+* Multiple subspecs that point to the same external dependency will now only
+  cause that external source to be fetched once.  
+  [Samuel Giddins](https://github.com/segiddins)
+  [#2743](https://github.com/CocoaPods/CocoaPods/issues/2743)
+
+##### Bug Fixes
+
+* Fixes an issue in the `XCConfigIntegrator` where not all targets that need
+  integration were being integrated, but were getting incorrect warnings about
+  the user having specified a custom base configuration.  
+  [Eloy Durán](https://github.com/alloy)
+  [2752](https://github.com/CocoaPods/CocoaPods/issues/2752)
+
+* Do not try to clone spec-repos in `/`.  
+  [Eloy Durán](https://github.com/alloy)
+  [#2723](https://github.com/CocoaPods/CocoaPods/issues/2723)
+
+* Improved sanitizing of configuration names which have a numeric prefix.  
+  [Steffen Matthischke](https://github.com/HeEAaD)
+  [#2700](https://github.com/CocoaPods/CocoaPods/pull/2700)
+
+* Fixes an issues where headers from a podspec with one platform are exposed to
+  targets with a different platform. The headers are now only exposed to the
+  targets with the same platform.  
+  [Michael Melanson](https://github.com/michaelmelanson)
+  [Kyle Fuller](https://github.com/kylef)
+  [#1249](https://github.com/CocoaPods/CocoaPods/issues/1249)
 
 
 ## 0.34.4
@@ -89,7 +402,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 * Allow the `Validator` to only use specific sources.
   Allows customizable source for `pod spec lint` and `pod lib lint`,
-  with both defaulting to `master`.  
+  with both defaulting to `master`.
   [Samuel Giddins](https://github.com/segiddins)
   [#2543](https://github.com/CocoaPods/CocoaPods/issues/2543)
   [cocoapods-trunk#28](https://github.com/CocoaPods/cocoapods-trunk/issues/28)
@@ -136,6 +449,8 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.34.0
+
+For more details, see :memo: [CocoaPods 0.34](http://blog.cocoapods.org/CocoaPods-0.34/) on our blog.
 
 ##### Breaking
 
@@ -398,6 +713,8 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 ## 0.33.0
 
+For more details, see :memo: [CocoaPods 0.33](http://blog.cocoapods.org/CocoaPods-0.33/) on our blog.
+
 ##### Breaking
 
 * The deprecated `pre_install` and the `pod_install` hooks of the specification
@@ -497,8 +814,10 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 ## 0.32.0
 
-[CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/master...0.31.1)
-• [CocoaPods-Core](https://github.com/CocoaPods/Core/compare/master...0.31.1)
+[CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.31.1...0.32.0)
+• [CocoaPods-Core](https://github.com/CocoaPods/Core/compare/0.31.1...0.32.0)
+
+For more details, see :memo: [CocoaPods 0.32](http://blog.cocoapods.org/CocoaPods-0.32/) on our blog.
 
 ##### Enhancements
 
@@ -591,8 +910,9 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.31.1
-[CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.31.1...0.31.0)
-• [CocoaPods-Core](https://github.com/CocoaPods/Core/compare/0.31.1...0.31.0)
+
+[CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.31.0...0.31.1)
+• [CocoaPods-Core](https://github.com/CocoaPods/Core/compare/0.31.0...0.31.1)
 
 ##### Minor Enhancements
 
@@ -610,8 +930,11 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.31.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.30.0...0.31.0)
 • [CocoaPods-Core](https://github.com/CocoaPods/Core/compare/0.30.0...0.31.0)
+
+For more details, see :memo: [CocoaPods 0.31](http://blog.cocoapods.org/CocoaPods-0.31/) on our blog.
 
 ##### Enhancements
 
@@ -706,7 +1029,10 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [#1894](https://github.com/CocoaPods/CocoaPods/pull/1894)
 
 ## 0.30.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.29.0...0.30.0)
+
+For more details, see :memo: [CocoaPods 0.30](http://blog.cocoapods.org/CocoaPods-0.30/) on our blog.
 
 ###### Enhancements
 
@@ -739,9 +1065,12 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.29.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.28.0...0.29.0)
 • [CocoaPods-core](https://github.com/CocoaPods/Core/compare/0.28.0...0.29.0)
 • [cocoapods-downloader](https://github.com/CocoaPods/cocoapods-downloader/compare/0.2.0...0.3.0)
+
+For more details, see :memo: [CocoaPods 0.29](http://blog.cocoapods.org/CocoaPods-0.29/) on our blog.
 
 ###### Breaking
 
@@ -864,9 +1193,12 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.28.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.27.1...0.28.0)
 • [CocoaPods-core](https://github.com/CocoaPods/Core/compare/0.27.1...0.28.0)
 • [CLAide](https://github.com/CocoaPods/CLAide/compare/0.3.2...0.4.0)
+
+For more details, see :memo: [CocoaPods 0.28](http://blog.cocoapods.org/CocoaPods-0.28/) on our blog.
 
 ###### Enhancements
 
@@ -935,9 +1267,12 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.27.1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.26.2...0.27.1)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.26.2...0.27.1)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.13.0...0.14.0)
+
+For more details, see :memo: [CocoaPods 0.27 and improved installation UX](http://blog.cocoapods.org/CocoaPods-0.27-and-improved-installation-UX/) on our blog.
 
 ###### Enhancements
 
@@ -989,6 +1324,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.26.2
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.26.1...0.26.2)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.26.1...0.26.2)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.11.1...0.13.0)
@@ -1012,9 +1348,12 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.26.1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.25.0...0.26.1)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.25.0...0.26.1)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.11.1...0.12.0)
+
+For more details, see :memo: [CocoaPods 0.26](http://blog.cocoapods.org/CocoaPods-0.26/) on our blog.
 
 ###### Enhancements
 
@@ -1071,6 +1410,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.25.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.24.0...0.25.0)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.24.0...0.25.0)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.10.1...0.11.0)
@@ -1133,8 +1473,9 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.24.0
-[CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.22.3...0.23.0.rc1)
-• [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.22.3...0.23.0.rc1)
+
+[CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.23.0...0.24.0)
+• [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.23.0...0.24.0)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.8.1...0.9.0)
 • [cocoapods-downloader](https://github.com/CocoaPods/cocoapods-downloader/compare/0.1.1...0.2.0)
 
@@ -1199,6 +1540,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.23.0.rc1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.22.3...0.23.0.rc1)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.22.3...0.23.0.rc1)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.8.1...0.9.0)
@@ -1267,6 +1609,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.22.3
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.22.2...0.22.3)
 
 ###### Enhancements
@@ -1300,6 +1643,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.22.2
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.22.1...0.22.2)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.22.1...0.22.2)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.8.0...0.8.1)
@@ -1328,6 +1672,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.22.1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.22.0...0.22.1)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.22.0...0.22.1)
 
@@ -1338,6 +1683,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.22.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.21.0...0.22.0)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.21.0...0.22.0)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.7.1...0.8.0)
@@ -1387,6 +1733,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [#1063](https://github.com/CocoaPods/CocoaPods/issues/1063)
 
 ## 0.21.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.21.0.rc1...0.21.0)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.21.0.rc1...0.21.0)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.7.0...0.7.1)
@@ -1401,6 +1748,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.21.0.rc1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.20.2...0.21.0.rc1)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.20.2...0.21.0.rc1)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.6.0...0.7.0)
@@ -1429,6 +1777,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [#1099](https://github.com/CocoaPods/CocoaPods/issues/1099)
 
 ## 0.20.2
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.20.1...0.20.2)
 
 ###### Bug fixes
@@ -1440,6 +1789,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 * Allow sandbox-pod to execute any tool inside a rbenv prefix.
 
 ## 0.20.1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.20.0...0.20.1)
 • [CLAide](https://github.com/CocoaPods/CLAide/compare/0.3.0...0.3.2)
 
@@ -1454,6 +1804,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   and 0.3.1 was not correctly processed by RubyGems.
 
 ## 0.20.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.19.1...0.20.0)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.19.1...0.20.0)
 • [cocoapods-downloader](https://github.com/CocoaPods/CLAide/compare/0.1.0...0.1.1)
@@ -1529,6 +1880,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [#1039](https://github.com/CocoaPods/CocoaPods/issues/1039)
 
 ## 0.19.1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.19.0...0.19.1)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.19.0...0.19.1)
 
@@ -1541,6 +1893,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [#1014](https://github.com/CocoaPods/CocoaPods/issues/1014)
 
 ## 0.19.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.18.1...0.19.0)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.18.1...0.19.0)
 
@@ -1585,6 +1938,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [#972](https://github.com/CocoaPods/CocoaPods/issues/972)
 
 ## 0.18.1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.18.0...0.18.1)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.18.0...0.18.)
 
@@ -1601,6 +1955,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.18.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.2...0.18.0)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.17.2...0.18.0)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.5.2...0.5.5)
@@ -1646,6 +2001,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.17.2
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.1...0.17.2)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.17.1...0.17.2)
 
@@ -1668,6 +2024,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 
 
 ## 0.17.1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.0...0.17.1)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.17.0...0.17.1)
 
@@ -1677,6 +2034,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [#917](https://github.com/CocoaPods/CocoaPods/issues/917)
 
 ## 0.17.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.0.rc7...0.17.0)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.17.0.rc7...0.17.0)
 
@@ -1697,6 +2055,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [motion-cocoapods#50](https://github.com/HipByte/motion-cocoapods/pull/50)
 
 #### rc7
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.0.rc6...0.17.0.rc7)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.17.0.rc6...0.17.0.rc7)
 
@@ -1716,6 +2075,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 - Search results are sorted.
 
 #### rc6
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.0.rc5...0.17.0.rc6)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.17.0.rc5...0.17.0.rc6)
 
@@ -1744,6 +2104,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 - Improved support for linting and validating specs repo.
 
 #### rc5
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.0.rc4...0.17.0.rc5)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.17.0.rc4...0.17.0.rc5)
 
@@ -1754,6 +2115,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 - More user errors are raised as an informative.
 
 #### rc4
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.0.rc3...0.17.0.rc4)
 
 ###### Bug fixes
@@ -1779,6 +2141,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   folders.
 
 #### rc3
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.0.rc2...0.17.0.rc3
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.5.0...0.5.1))
 
@@ -1802,6 +2165,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
 - Added `pod ipc repl` subcommand.
 
 #### rc2
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.17.0.rc1...0.17.0.rc2)
 • [cocoapods-core](https://github.com/CocoaPods/Core/compare/0.17.0.rc1...0.17.0.rc2)
 
@@ -1817,6 +2181,7 @@ To install or update CocoaPods see this [guide](http://docs.cocoapods.org/guides
   [#823](https://github.com/CocoaPods/CocoaPods/issues/823)
 
 #### rc1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.4...0.17.0.rc1)
 • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.4.3...0.5.0)
 • [cocoapods-core](https://github.com/CocoaPods/Core)
@@ -1925,6 +2290,7 @@ presented below.
   [CLAide](https://github.com/CocoaPods/CLAide).
 
 ## 0.16.4
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.3...0.16.4)
 
 ###### Enhancements
@@ -1940,6 +2306,7 @@ presented below.
   [34da3f7](https://github.com/CocoaPods/CocoaPods/commit/34da3f792b2a36fafacd4122e29025c9cf2ff38d)
 
 ## 0.16.3
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.2...0.16.3) • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.4.3...0.5.0)
 
 ###### Bug fixes
@@ -1972,6 +2339,7 @@ presented below.
 
 
 ## 0.16.2
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.1...0.16.2) • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.4.1...0.4.3)
 
 ###### Bug fixes
@@ -2000,6 +2368,7 @@ presented below.
   [#750](https://github.com/CocoaPods/CocoaPods/pull/750)
 
 ## 0.16.1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.0...0.16.1) • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.4.0...0.4.1)
 
 ###### Bug fixes
@@ -2024,6 +2393,7 @@ presented below.
 - Take SDKROOT into account when adding frameworks.
 
 ## 0.16.0
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.0.rc5...master)
 
 ###### Enhancements
@@ -2032,6 +2402,7 @@ presented below.
   [#657](https://github.com/CocoaPods/CocoaPods/issues/657)
 
 ## 0.16.0.rc5
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.0.rc4...0.16.0.rc5)
 
 ###### Deprecated
@@ -2052,6 +2423,7 @@ presented below.
   [#613](https://github.com/CocoaPods/CocoaPods/issues/613)
 
 ## 0.16.0.rc4
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.0.rc3...0.16.0.rc4)
 
 ###### Bug fixes
@@ -2060,6 +2432,7 @@ presented below.
   [#657](https://github.com/CocoaPods/CocoaPods/issues/657)
 
 ## 0.16.0.rc3
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.0.rc2...0.16.0.rc3) • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.4.0.rc1...0.4.0.rc6)
 
 ###### Enhancements
@@ -2077,6 +2450,7 @@ presented below.
   [#612](https://github.com/CocoaPods/CocoaPods/issues/612)
 
 ## 0.16.0.rc2
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.16.0.rc1...0.16.0.rc2)
 
 ###### Bug fixes
@@ -2084,6 +2458,7 @@ presented below.
 - Fix for uninitialized constant Xcodeproj::Constants error.
 
 ## 0.16.0.rc1
+
 [CocoaPods](https://github.com/CocoaPods/CocoaPods/compare/0.15.2...0.16.0.rc1) • [Xcodeproj](https://github.com/CocoaPods/Xcodeproj/compare/0.3.5...0.4.0.rc1)
 
 ###### Enhancements

@@ -18,12 +18,12 @@ module Pod
         end
         config.sandbox.project = Project.new(config.sandbox.project_path)
         Xcodeproj::Project.new(config.sandbox.project_path).save
-        @library = AggregateTarget.new(@podfile.target_definitions['Pods'], config.sandbox)
-        @library.client_root = sample_project_path.dirname
-        @library.user_project_path  = sample_project_path
-        @library.user_target_uuids  = ['A346496C14F9BE9A0080D870']
+        @target = AggregateTarget.new(@podfile.target_definitions['Pods'], config.sandbox)
+        @target.client_root = sample_project_path.dirname
+        @target.user_project_path  = sample_project_path
+        @target.user_target_uuids  = ['A346496C14F9BE9A0080D870']
         empty_library = AggregateTarget.new(@podfile.target_definitions[:empty], config.sandbox)
-        @integrator = UserProjectIntegrator.new(@podfile, config.sandbox, temporary_directory, [@library, empty_library])
+        @integrator = UserProjectIntegrator.new(@podfile, config.sandbox, temporary_directory, [@target, empty_library])
       end
 
       #-----------------------------------------------------------------------#
@@ -55,47 +55,43 @@ module Pod
           UI.warnings.should.include?('The Podfile does not contain any dependencies')
         end
 
-        it 'check that the integrated target does not override the CocoaPods build settings' do
-          UI.warnings = ''
-          target_config = stub(:name => 'Release', :build_settings => { 'GCC_PREPROCESSOR_DEFINITIONS' => ['FLAG=1'] })
-          user_target = stub(:name => 'SampleProject', :build_configurations => [target_config])
-          @library.stubs(:user_targets).returns([user_target])
+        describe '#warn_about_xcconfig_overrides' do
+          shared 'warn_about_xcconfig_overrides' do
+            target_config = stub(:name => 'Release', :build_settings => @user_target_build_settings)
+            user_target = stub(:name => 'SampleProject', :build_configurations => [target_config])
+            @target.stubs(:user_targets).returns([user_target])
 
-          @library.xcconfigs['Release'] = { 'GCC_PREPROCESSOR_DEFINITIONS' => 'COCOAPODS=1' }
-          @integrator = UserProjectIntegrator.new(@podfile, config.sandbox, temporary_directory, [@library])
+            @target.xcconfigs['Release'] = { 'GCC_PREPROCESSOR_DEFINITIONS' => 'COCOAPODS=1' }
+            @integrator = UserProjectIntegrator.new(@podfile, config.sandbox, temporary_directory, [@target])
 
-          @integrator.unstub(:warn_about_xcconfig_overrides)
-          @integrator.send(:warn_about_xcconfig_overrides)
-          UI.warnings.should.include 'The `SampleProject [Release]` target ' \
-            'overrides the `GCC_PREPROCESSOR_DEFINITIONS` build setting'
-        end
+            @integrator.unstub(:warn_about_xcconfig_overrides)
+            @integrator.send(:warn_about_xcconfig_overrides)
+          end
 
-        it 'allows the use of the alternate form of the inherited flag' do
-          UI.warnings = ''
-          target_config = stub(:name => 'Release', :build_settings => { 'GCC_PREPROCESSOR_DEFINITIONS' => ['FLAG=1', '${inherited}'] })
-          user_target = stub(:name => 'SampleProject', :build_configurations => [target_config])
-          @library.stubs(:user_targets).returns([user_target])
+          it 'check that the integrated target does not override the CocoaPods build settings' do
+            @user_target_build_settings = { 'GCC_PREPROCESSOR_DEFINITIONS' => ['FLAG=1'] }
+            behaves_like 'warn_about_xcconfig_overrides'
+            UI.warnings.should.include 'The `SampleProject [Release]` target ' \
+              'overrides the `GCC_PREPROCESSOR_DEFINITIONS` build setting'
+          end
 
-          @library.xcconfigs['Release'] = { 'GCC_PREPROCESSOR_DEFINITIONS' => 'COCOAPODS=1' }
-          @integrator = UserProjectIntegrator.new(@podfile, config.sandbox, temporary_directory, [@library])
+          it 'allows the use of the alternate form of the inherited flag' do
+            @user_target_build_settings = { 'GCC_PREPROCESSOR_DEFINITIONS' => ['FLAG=1', '${inherited}'] }
+            behaves_like 'warn_about_xcconfig_overrides'
+            UI.warnings.should.not.include 'GCC_PREPROCESSOR_DEFINITIONS'
+          end
 
-          @integrator.unstub(:warn_about_xcconfig_overrides)
-          @integrator.send(:warn_about_xcconfig_overrides)
-          UI.warnings.should.not.include 'GCC_PREPROCESSOR_DEFINITIONS'
-        end
+          it 'allows build settings which inherit the settings form the CocoaPods xcconfig' do
+            @user_target_build_settings = { 'GCC_PREPROCESSOR_DEFINITIONS' => ['FLAG=1', '$(inherited)'] }
+            behaves_like 'warn_about_xcconfig_overrides'
+            UI.warnings.should.not.include 'GCC_PREPROCESSOR_DEFINITIONS'
+          end
 
-        it 'allows build settings which inherit the settings form the CocoaPods xcconfig' do
-          UI.warnings = ''
-          target_config = stub(:name => 'Release', :build_settings => { 'GCC_PREPROCESSOR_DEFINITIONS' => ['FLAG=1', '$(inherited)'] })
-          user_target = stub(:name => 'SampleProject', :build_configurations => [target_config])
-          @library.stubs(:user_targets).returns([user_target])
-
-          @library.xcconfigs['Release'] = { 'GCC_PREPROCESSOR_DEFINITIONS' => 'COCOAPODS=1' }
-          @integrator = UserProjectIntegrator.new(@podfile, config.sandbox, temporary_directory, [@library])
-
-          @integrator.unstub(:warn_about_xcconfig_overrides)
-          @integrator.send(:warn_about_xcconfig_overrides)
-          UI.warnings.should.not.include 'GCC_PREPROCESSOR_DEFINITIONS'
+          it "ignores certain build settings which don't inherit the settings form the CocoaPods xcconfig" do
+            @user_target_build_settings = { 'CODE_SIGN_IDENTITY' => "Mac Developer" }
+            behaves_like 'warn_about_xcconfig_overrides'
+            UI.warnings.should.not.include 'CODE_SIGN_IDENTITY'
+          end
         end
 
       end

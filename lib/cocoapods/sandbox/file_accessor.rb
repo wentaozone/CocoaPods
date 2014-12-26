@@ -9,6 +9,13 @@ module Pod
     class FileAccessor
       HEADER_EXTENSIONS = Xcodeproj::Constants::HEADER_FILES_EXTENSIONS
 
+      GLOB_PATTERNS = {
+        :readme              => 'readme{*,.*}'.freeze,
+        :license             => 'licen{c,s}e{*,.*}'.freeze,
+        :source_files        => '*.{h,hpp,hh,m,mm,c,cpp,swift}'.freeze,
+        :public_header_files => "*{#{HEADER_EXTENSIONS.join(',')}}".freeze,
+      }.freeze
+
       # @return [Sandbox::PathList] the directory where the source of the Pod
       #         is located.
       #
@@ -71,6 +78,27 @@ module Pod
         paths_for_attribute(:source_files)
       end
 
+      # @return [Array<Pathname>] the source files of the specification that
+      #                           use ARC.
+      #
+      def arc_source_files
+        case spec_consumer.requires_arc
+        when TrueClass
+          source_files
+        when FalseClass
+          []
+        else
+          paths_for_attribute(:requires_arc) & source_files
+        end
+      end
+
+      # @return [Array<Pathname>] the source files of the specification that
+      #                           do not use ARC.
+      #
+      def non_arc_source_files
+        source_files - arc_source_files
+      end
+
       # @return [Array<Pathname>] the headers of the specification.
       #
       def headers
@@ -78,16 +106,21 @@ module Pod
         source_files.select { |f| extensions.include?(f.extname) }
       end
 
+      # @param [Boolean] include_frameworks
+      #        Whether or not to include the headers of the vendored frameworks.
+      #        Defaults to not include them.
+      #
       # @return [Array<Pathname>] the public headers of the specification.
       #
-      def public_headers
-        public_headers = paths_for_attribute(:public_header_files)
-        private_headers = paths_for_attribute(:private_header_files)
+      def public_headers(include_frameworks = false)
+        public_headers = public_header_files
+        private_headers = private_header_files
         if public_headers.nil? || public_headers.empty?
           header_files = headers
         else
           header_files = public_headers
         end
+        header_files += vendored_frameworks_headers if include_frameworks
         header_files - private_headers
       end
 
@@ -109,6 +142,16 @@ module Pod
       #
       def vendored_frameworks
         paths_for_attribute(:vendored_frameworks, true)
+      end
+
+      # @return [Array<Pathname>] The paths of the framework headers that come
+      #         shipped with the Pod.
+      #
+      def vendored_frameworks_headers
+        vendored_frameworks.map do |framework|
+          headers_dir = (framework + 'Headers').realpath
+          Pathname.glob(headers_dir + GLOB_PATTERNS[:public_header_files])
+        end.flatten.uniq
       end
 
       # @return [Array<Pathname>] The paths of the library bundles that come
@@ -149,7 +192,7 @@ module Pod
       # @return [Pathname] The path of the auto-detected README file.
       #
       def readme
-        path_list.glob(%w(        readme{*,.*}        )).first
+        path_list.glob([GLOB_PATTERNS[:readme]]).first
       end
 
       # @return [Pathname] The path of the license file as indicated in the
@@ -159,8 +202,28 @@ module Pod
         if spec_consumer.spec.root.license[:file]
           path_list.root + spec_consumer.spec.root.license[:file]
         else
-          path_list.glob(%w(          licen{c,s}e{*,.*}          )).first
+          path_list.glob([GLOB_PATTERNS[:license]]).first
         end
+      end
+
+      #-----------------------------------------------------------------------#
+
+      private
+
+      # @!group Private paths
+
+      # @return [Array<Pathname>] The paths of the user-specified public header
+      #         files.
+      #
+      def public_header_files
+        paths_for_attribute(:public_header_files)
+      end
+
+      # @return [Array<Pathname>] The paths of the user-specified public header
+      #         files.
+      #
+      def private_header_files
+        paths_for_attribute(:private_header_files)
       end
 
       #-----------------------------------------------------------------------#
@@ -182,25 +245,10 @@ module Pod
         file_patterns = spec_consumer.send(attribute)
         options = {
           :exclude_patterns => spec_consumer.exclude_files,
-          :dir_pattern => glob_for_attribute(attribute),
+          :dir_pattern => GLOB_PATTERNS[attribute],
           :include_dirs => include_dirs,
         }
         expanded_paths(file_patterns, options)
-      end
-
-      # Returns the pattern to use to glob a directory for an attribute.
-      #
-      # @param  [Symbol] attribute
-      #         the name of the attribute
-      #
-      # @return [String] the glob pattern.
-      #
-      def glob_for_attribute(attrbute)
-        globs = {
-          :source_files => '*.{h,hpp,hh,m,mm,c,cpp}'.freeze,
-          :public_header_files => "*.{#{ HEADER_EXTENSIONS * ',' }}".freeze,
-        }
-        globs[attrbute]
       end
 
       # Matches the given patterns to the file present in the root of the path

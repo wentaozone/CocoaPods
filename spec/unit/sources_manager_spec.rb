@@ -43,6 +43,13 @@ module Pod
 
       #--------------------------------------#
 
+      it 'does not fail if the repos directory does not exist' do
+        config.stubs(:repos_dir).returns(Pathname.new('/foo/bar'))
+        SourcesManager.unstub(:all)
+        SourcesManager.aggregate.sources.should == []
+        SourcesManager.all.should == []
+      end
+
       it 'returns all the sources' do
         SourcesManager.unstub(:all)
         SourcesManager.all.map(&:name).should == %w(master test_repo)
@@ -114,6 +121,11 @@ module Pod
             Pathname.any_instance.stubs(:exist?).
               returns(false).then.returns(true)
             SourcesManager.send(:name_for_url, url).should == 'master'
+
+            url = 'git@github.com:/CocoaPods/Specs.git'
+            Pathname.any_instance.stubs(:exist?).
+              returns(false).then.returns(true)
+            SourcesManager.send(:name_for_url, url).should == 'master'
           end
 
           it 'uses the organization name for github.com URLs' do
@@ -128,7 +140,15 @@ module Pod
           end
 
           it 'supports scp-style URLs' do
+            url = 'git@git-host.com:specs.git'
+            SourcesManager.send(:name_for_url, url).
+              should == 'git-host-specs'
+
             url = 'git@git-host.com/specs.git'
+            SourcesManager.send(:name_for_url, url).
+              should == 'git-host-specs'
+
+            url = 'git@git-host.com:/specs.git'
             SourcesManager.send(:name_for_url, url).
               should == 'git-host-specs'
           end
@@ -138,13 +158,13 @@ module Pod
             SourcesManager.send(:name_for_url, url).
               should == 'companyalias-pod-specs'
           end
-          
+
           it 'supports file URLs' do
             url = 'file:///Users/kurrytran/pod-specs'
             SourcesManager.send(:name_for_url, url).
               should == 'users-kurrytran-pod-specs'
           end
-          
+
           it 'uses the repo name if no parent directory' do
             url = 'file:///pod-specs'
             SourcesManager.send(:name_for_url, url).
@@ -184,6 +204,13 @@ module Pod
             SourcesManager.stubs(:source_with_url).returns(nil).then.returns('Source')
             SourcesManager.find_or_create_source_with_url('https://github.com/artsy/Specs.git').
               should == 'Source'
+          end
+
+          it 'handles repositories without a remote url' do # for #2965
+            Command::Repo::Add.any_instance.stubs(:run).once
+            Source.any_instance.stubs(:url).returns(nil)
+            e = lambda { SourcesManager.find_or_create_source_with_url('url') }
+            e.should.not.raise
           end
         end
       end

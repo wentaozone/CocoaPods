@@ -1,5 +1,12 @@
 require 'colored'
 require 'claide'
+require 'molinillo/errors'
+
+module Molinillo
+  class ResolverError
+    include CLAide::InformativeError
+  end
+end
 
 module Pod
   class PlainInformative
@@ -21,8 +28,8 @@ module Pod
     self.abstract_command = true
     self.command = 'pod'
     self.version = VERSION
-    self.description = 'CocoaPods, the Objective-C library package manager.'
-    self.plugin_prefix = 'cocoapods'
+    self.description = 'CocoaPods, the Cocoa library package manager.'
+    self.plugin_prefixes = %w(claide cocoapods)
 
     [Install, Update, Outdated, IPC::Podfile, IPC::Repl].each { |c| c.send(:include, ProjectDirectory) }
 
@@ -32,17 +39,8 @@ module Pod
       ].concat(super)
     end
 
-    def self.parse(argv)
-      command = super
-      unless SourcesManager.master_repo_functional? || command.is_a?(Setup) || command.is_a?(Repo::Add) || ENV['SKIP_SETUP']
-        Setup.new(CLAide::ARGV.new([])).run
-      end
-      command
-    end
-
     def self.run(argv)
       help! 'You cannot run CocoaPods as root.' if Process.uid == 0
-      verify_git_version!
 
       super(argv)
       UI.print_warnings
@@ -84,6 +82,16 @@ module Pod
       end
     end
 
+    # Ensure that the master spec repo exists
+    #
+    # @return [void]
+    #
+    def ensure_master_spec_repo_exists!
+      unless SourcesManager.master_repo_functional?
+        Setup.new(CLAide::ARGV.new([])).run
+      end
+    end
+
     #-------------------------------------------------------------------------#
 
     include Config::Mixin
@@ -111,19 +119,6 @@ module Pod
     def verify_lockfile_exists!
       unless config.lockfile
         raise Informative, "No `Podfile.lock' found in the project directory, run `pod install'."
-      end
-    end
-
-    def self.verify_git_version!
-      begin
-        git_version = `git version`.strip
-      rescue Errno::ENOENT
-        help! 'CocoaPods requires you to have `git` installed.'
-      end
-
-      git_version = Version.new(git_version.split[2])
-      if git_version < Pod::Version.new('1.7.5')
-        help! 'CocoaPods requires git version 1.7.5 or newer. Please update git.'
       end
     end
   end

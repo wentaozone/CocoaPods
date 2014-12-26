@@ -66,15 +66,10 @@ CLIntegracon.configure do |c|
   # Register special handling for YAML files
   paths = [%r{Podfile\.lock}, %r{Manifest\.lock$}, %r{xcodeproj\.yaml$}]
   c.has_special_handling_for(*paths) do |path|
-    if RUBY_VERSION < '1.9'
-      nil # CP is not sorting array derived from hashes whose order is
-    # undefined in 1.8.7
-    else
-      # Remove CocoaPods version
-      yaml = File.open(path) { |f| YAML.load(f) }
-      yaml.delete('COCOAPODS')
-      YAML.dump(yaml)
-    end
+    # Remove CocoaPods version
+    yaml = File.open(path) { |f| YAML.load(f) }
+    yaml.delete('COCOAPODS')
+    YAML.dump(yaml)
   end
 
   # So we don't need to compare them directly
@@ -87,9 +82,6 @@ CLIntegracon.configure do |c|
   # Ignore xcuserdata
   c.ignores %r{/xcuserdata/}
 
-  # TODO The output from the caches changes on Travis
-  c.ignores 'execution_output.txt'
-
   # Needed for some test cases
   c.ignores 'Reachability.podspec'
   c.ignores 'PodTest-hg-source/**'
@@ -99,10 +91,14 @@ end
 
 describe_cli 'pod' do
 
+  Process.wait(spawn('which hg', :err => :out, :out => '/dev/null'))
+  has_mercurial = $?.success?
+
   subject do |s|
     s.executable = "ruby #{ROOT + 'bin/pod'}"
     s.environment_vars = {
-      'CP_AGGRESSIVE_CACHE' => 'TRUE',
+      'CP_REPOS_DIR'             => ROOT + 'spec/fixtures/spec-repos',
+      'CP_AGGRESSIVE_CACHE'      => 'TRUE',
       'XCODEPROJ_DISABLE_XCPROJ' => 'TRUE',
       'CLAIDE_DISABLE_AUTO_WRAP' => 'TRUE',
     }
@@ -111,7 +107,11 @@ describe_cli 'pod' do
       '--no-ansi',
     ]
     s.replace_path ROOT.to_s, 'ROOT'
+    s.replace_path `which git`.chomp, 'GIT_BIN'
+    s.replace_path `which hg`.chomp, 'HG_BIN' if has_mercurial
     s.replace_user_path 'Library/Caches/CocoaPods', 'CACHES_DIR'
+    s.replace_pattern %r(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d [-+]\d{4}), '<#DATE#>'
+    s.replace_pattern %r(\(Took \d+.\d+ seconds\)), '(Took <#DURATION#> seconds)'
   end
 
   describe 'Pod install' do
@@ -139,9 +139,14 @@ describe_cli 'pod' do
                             'install --no-repo-update'
     end
 
-    describe 'Installs a Pod with different subspecs activated across different targets' do
-      behaves_like cli_spec 'install_subspecs',
-                            'install --no-repo-update'
+    description = 'Installs a Pod with different subspecs activated across different targets'
+    if has_mercurial
+      describe description do
+        behaves_like cli_spec 'install_subspecs',
+                              'install --no-repo-update'
+      end
+    else
+      Bacon::ErrorLog << "[!] Skipping test due to missing `hg` executable: #{description}".red << "\n\n"
     end
 
     describe 'Installs a Pod with subspecs and does not duplicate the prefix header' do
@@ -154,9 +159,14 @@ describe_cli 'pod' do
                             'install --no-repo-update'
     end
 
-    describe 'Installs a Pod with an external source' do
-      behaves_like cli_spec 'install_external_source',
-                            'install --no-repo-update'
+    description = 'Installs a Pod with an external source'
+    if has_mercurial
+      describe description do
+        behaves_like cli_spec 'install_external_source',
+                              'install --no-repo-update'
+      end
+    else
+      Bacon::ErrorLog << "[!] Skipping test due to missing `hg` executable: #{description}".red << "\n\n"
     end
 
     describe 'Installs a Pod given the podspec' do
@@ -174,10 +184,30 @@ describe_cli 'pod' do
                             'install --no-repo-update'
     end
 
+    describe 'Integrates a Pod with resources' do
+      behaves_like cli_spec 'install_resources',
+                            'install --no-repo-update'
+    end
+
+    describe 'Integrates a Pod without source files but with resources' do
+      behaves_like cli_spec 'install_resources_no_source_files',
+                            'install --no-repo-update'
+    end
+
+    describe 'Integrates a Pod using frameworks with resources' do
+      behaves_like cli_spec 'install_framework_resources',
+                            'install --no-repo-update'
+    end
+
     # @todo add tests for all the hooks API
     #
     describe 'Runs the Podfile callbacks' do
       behaves_like cli_spec 'install_podfile_callbacks',
+                            'install --no-repo-update'
+    end
+
+    describe 'Uses Lockfile checkout options' do
+      behaves_like cli_spec 'install_using_checkout_options',
                             'install --no-repo-update'
     end
   end

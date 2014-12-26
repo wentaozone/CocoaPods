@@ -83,7 +83,7 @@ module Pod
           UI.puts "\nValidating #{'spec'.pluralize(count)}".yellow
           podspec_files.each do |podspec|
             validator = Validator.new(podspec, SourcesManager.all.map(&:url))
-            validator.only_errors = @allow_warnings
+            validator.allow_warnings = @allow_warnings
             begin
               validator.validate
             rescue
@@ -106,7 +106,7 @@ module Pod
         #
         def check_repo_status
           clean = Dir.chdir(repo_dir) { `git status --porcelain  2>&1` } == ''
-          raise Informative, "The repo `#{@repo}` is not clean" unless clean
+          raise Informative, "The repo `#{@repo}` at #{UI.path repo_dir} is not clean" unless clean
         end
 
         # Updates the git repo against the remote.

@@ -8,7 +8,7 @@ module Pod
       #
       attr_reader :sandbox
 
-      # @return [Array<Library>] The libraries of the installation.
+      # @return [Array<PodTarget>] The libraries of the installation.
       #
       attr_reader :libraries
 
@@ -17,7 +17,7 @@ module Pod
       attr_reader :pods_project
 
       # @param [Sandbox] sandbox @see sandbox
-      # @param [Array<Library>] libraries @see libraries
+      # @param [Array<PodTarget>] libraries @see libraries
       # @param [Project] libraries @see libraries
       #
       def initialize(sandbox, libraries, pods_project)
@@ -67,7 +67,7 @@ module Pod
       #
       def add_source_files_references
         UI.message '- Adding source files to Pods project' do
-          add_file_accessors_paths_to_pods_group(:source_files)
+          add_file_accessors_paths_to_pods_group(:source_files, nil, true)
         end
       end
 
@@ -100,8 +100,8 @@ module Pod
       #
       def add_resources
         UI.message '- Adding resources to Pods project' do
-          add_file_accessors_paths_to_pods_group(:resources, :resources)
-          add_file_accessors_paths_to_pods_group(:resource_bundle_files, :resources)
+          add_file_accessors_paths_to_pods_group(:resources, :resources, true)
+          add_file_accessors_paths_to_pods_group(:resource_bundle_files, :resources, true)
         end
       end
 
@@ -114,15 +114,15 @@ module Pod
           libraries.each do |library|
             library.file_accessors.each do |file_accessor|
               headers_sandbox = Pathname.new(file_accessor.spec.root.name)
-              library.build_headers.add_search_path(headers_sandbox)
-              sandbox.public_headers.add_search_path(headers_sandbox)
+              library.build_headers.add_search_path(headers_sandbox, library.platform)
+              sandbox.public_headers.add_search_path(headers_sandbox, library.platform)
 
               header_mappings(headers_sandbox, file_accessor, file_accessor.headers).each do |namespaced_path, files|
-                library.build_headers.add_files(namespaced_path, files)
+                library.build_headers.add_files(namespaced_path, files, library.platform)
               end
 
               header_mappings(headers_sandbox, file_accessor, file_accessor.public_headers).each do |namespaced_path, files|
-                sandbox.public_headers.add_files(namespaced_path, files)
+                sandbox.public_headers.add_files(namespaced_path, files, library.platform)
               end
             end
           end
@@ -152,14 +152,20 @@ module Pod
       # @param  [Symbol] group_key
       #         The key of the group of the Pods project.
       #
+      # @param  [Bool] reflect_file_system_structure_for_development
+      #         Wether organizing the a local pod's files in subgroups inside
+      #         the pod's group is allowed.
+      #
       # @return [void]
       #
-      def add_file_accessors_paths_to_pods_group(file_accessor_key, group_key = nil)
+      def add_file_accessors_paths_to_pods_group(file_accessor_key, group_key = nil, reflect_file_system_structure_for_development = false)
         file_accessors.each do |file_accessor|
+          pod_name = file_accessor.spec.name
+          local = sandbox.local?(pod_name)
           paths = file_accessor.send(file_accessor_key)
           paths.each do |path|
             group = pods_project.group_for_spec(file_accessor.spec.name, group_key)
-            pods_project.add_file_reference(path, group)
+            pods_project.add_file_reference(path, group, local && reflect_file_system_structure_for_development)
           end
         end
       end
@@ -167,11 +173,12 @@ module Pod
       # Computes the destination sub-directory in the sandbox
       #
       # @param  [Pathname] headers_sandbox
-      #         The sandbox where the headers links should be stored for this
+      #         The sandbox where the header links should be stored for this
       #         Pod.
       #
-      # @param  [Specification::Consumer] consumer
-      #         The consumer for which the headers need to be linked.
+      # @param  [Sandbox::FileAccessor] file_accessor
+      #         The consumer file accessor for which the headers need to be
+      #         linked.
       #
       # @param  [Array<Pathname>] headers
       #         The absolute paths of the headers which need to be mapped.

@@ -64,8 +64,12 @@ module Pod
     # @return [Lockfile] the manifest which contains the information about the
     #         installed pods.
     #
+    attr_accessor :manifest
+
     def manifest
-      Lockfile.from_file(manifest_path) if manifest_path.exist?
+      @manifest ||= begin
+        Lockfile.from_file(manifest_path) if manifest_path.exist?
+      end
     end
 
     # @return [Project] the Pods project.
@@ -219,6 +223,7 @@ module Pod
     # @return [Nil] if the podspec is not stored.
     #
     def specification_path(name)
+      name = Specification.root_name(name)
       path = specifications_root + "#{name}.podspec"
       if path.exist?
         path
@@ -378,7 +383,7 @@ module Pod
     end
 
     # @return [Hash{String=>String}] The path of the Pods with a local source
-    #         grouped by their name.
+    #         grouped by their root name.
     #
     # @todo   Rename (e.g. `pods_with_local_path`)
     #

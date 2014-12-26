@@ -27,16 +27,14 @@ describe Pod::Generator::Plist do
     }
   end
 
-  if RUBY_VERSION >= '1.9'
-    it 'returns a correctly sanitized license hash for each pod' do
-      license_text = 'Copyright © 2013–2014 Boris Bügling'
-      @generator.stubs(:license_text).returns(license_text)
-      @generator.hash_for_spec(@spec).should == {
-        :Type => 'PSGroupSpecifier',
-        :Title => 'POD_NAME',
-        :FooterText => license_text,
-      }
-    end
+  it 'returns a correctly sanitized license hash for each pod' do
+    license_text = 'Copyright © 2013–2014 Boris Bügling'
+    @generator.stubs(:license_text).returns(license_text)
+    @generator.hash_for_spec(@spec).should == {
+      :Type => 'PSGroupSpecifier',
+      :Title => 'POD_NAME',
+      :FooterText => license_text,
+    }
   end
 
   it 'returns nil for a pod with no license text' do
@@ -56,7 +54,7 @@ describe Pod::Generator::Plist do
     basepath = config.sandbox.root + 'Pods-acknowledgements'
     given_path = @generator.class.path_from_basepath(basepath)
     expected_path = config.sandbox.root + 'Pods-acknowledgements.plist'
-    Xcodeproj.expects(:write_plist).with(equals(@generator.plist), equals(expected_path))
+    Xcodeproj::PlistHelper.expects(:write).with(equals(@generator.plist), equals(expected_path))
     @generator.save_as(given_path)
   end
 end

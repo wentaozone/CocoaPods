@@ -45,7 +45,10 @@ module Pod
         # @return [Xcodeproj::Config]
         #
         def generate
-          search_paths = target.build_headers.search_paths.concat(target.sandbox.public_headers.search_paths)
+          target_search_paths = target.build_headers.search_paths(target.platform)
+          sandbox_search_paths = target.sandbox.public_headers.search_paths(target.platform)
+          search_paths = target_search_paths.concat(sandbox_search_paths).uniq
+
           config = {
             'OTHER_LDFLAGS' => XCConfigHelper.default_ld_flags(target),
             'PODS_ROOT'  => '${SRCROOT}',
@@ -54,8 +57,20 @@ module Pod
             # 'USE_HEADERMAP' => 'NO'
           }
 
+          if target.requires_frameworks?
+            # Only quote the FRAMEWORK_SEARCH_PATHS entry, because it’s a setting that takes multiple values.
+            # In addition, quoting CONFIGURATION_BUILD_DIR would make it be interpreted as a relative path.
+            build_settings = {
+              'PODS_FRAMEWORK_BUILD_PATH' => target.configuration_build_dir,
+              'CONFIGURATION_BUILD_DIR' => '$PODS_FRAMEWORK_BUILD_PATH',
+              'FRAMEWORK_SEARCH_PATHS' => '"$PODS_FRAMEWORK_BUILD_PATH"',
+            }
+            config.merge!(build_settings)
+          end
+
           xcconfig_hash = add_xcconfig_namespaced_keys(public_xcconfig.to_hash, config, target.xcconfig_prefix)
           @xcconfig = Xcodeproj::Config.new(xcconfig_hash)
+          XCConfigHelper.add_target_specific_settings(target, @xcconfig)
           @xcconfig.includes = [target.name]
           @xcconfig
         end

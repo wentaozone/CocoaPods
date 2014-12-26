@@ -131,10 +131,9 @@ module Pod
     attr_accessor :local
     alias_method :local?, :local
 
-    # @return [Bool] Whether the validator should fail only on errors or also
-    #         on warnings.
+    # @return [Bool] Whether the validator should fail on warnings, or only on errors.
     #
-    attr_accessor :only_errors
+    attr_accessor :allow_warnings
 
     # @return [String] name of the subspec to check, if nil all subspecs are checked.
     #
@@ -143,6 +142,10 @@ module Pod
     # @return [Bool] Whether the validator should validate all subspecs
     #
     attr_accessor :no_subspecs
+
+    # @return [Bool] Whether frameworks should be used for the installation.
+    #
+    attr_accessor :use_frameworks
 
     #-------------------------------------------------------------------------#
 
@@ -155,7 +158,7 @@ module Pod
     # @return [Boolean]
     #
     def validated?
-      result_type != :error && (result_type != :warning || only_errors)
+      result_type != :error && (result_type != :warning || allow_warnings)
     end
 
     # @return [Symbol]
@@ -192,7 +195,7 @@ module Pod
     #
     def perform_linting
       linter.lint
-      @results.concat(linter.results)
+      @results.concat(linter.results.to_a)
     end
 
     # Perform analysis for a given spec (or subspec)
@@ -234,9 +237,9 @@ module Pod
       resp = Pod::HTTP.validate_url(url)
 
       if !resp
-        warning "There was a problem validating the URL #{url}."
+        warning('url', "There was a problem validating the URL #{url}.")
       elsif !resp.success?
-        warning "The URL (#{url}) is not reachable."
+        warning('url', "The URL (#{url}) is not reachable.")
       end
 
       resp
@@ -256,7 +259,7 @@ module Pod
       spec.screenshots.compact.each do |screenshot|
         request = validate_url(screenshot)
         if request && !(request.headers['content-type'] && request.headers['content-type'].first =~ /image\/.*/i)
-          warning "The screenshot #{screenshot} is not a valid image."
+          warning('screenshot', "The screenshot #{screenshot} is not a valid image.")
         end
       end
     end
@@ -299,7 +302,8 @@ module Pod
     # for all available platforms with xcodebuild.
     #
     def install_pod
-      podfile = podfile_from_spec(consumer.platform_name, spec.deployment_target(consumer.platform_name))
+      deployment_target = spec.subspec_by_name(subspec_name).deployment_target(consumer.platform_name)
+      podfile = podfile_from_spec(consumer.platform_name, deployment_target, use_frameworks)
       sandbox = Sandbox.new(config.sandbox_root)
       installer = Installer.new(sandbox, podfile)
       installer.install!
@@ -341,14 +345,18 @@ module Pod
             end
 
             if message.include?('error: ')
-              error "[xcodebuild] #{message}"
+              error('xcodebuild', message)
             else
-              note "[xcodebuild] #{message}"
+              note('xcodebuild', message)
             end
           end
         end
       end
     end
+
+    FILE_PATTERNS = %i(source_files resources preserve_paths vendored_libraries
+                       vendored_frameworks public_header_files preserve_paths
+                       private_header_files resource_bundles).freeze
 
     # It checks that every file pattern specified in a spec yields
     # at least one file. It requires the pods to be already present
@@ -357,17 +365,39 @@ module Pod
     # @return [void]
     #
     def check_file_patterns
-      [:source_files, :resources, :preserve_paths, :vendored_libraries, :vendored_frameworks].each do |attr_name|
-        # file_attr = Specification::DSL.attributes.values.find{|attr| attr.name == attr_name }
+      FILE_PATTERNS.each do |attr_name|
+        if respond_to?("_validate_#{attr_name}", true)
+          send("_validate_#{attr_name}")
+        end
+
         if !file_accessor.spec_consumer.send(attr_name).empty? && file_accessor.send(attr_name).empty?
-          error "The `#{attr_name}` pattern did not match any file."
+          error('file patterns', "The `#{attr_name}` pattern did not match any file.")
         end
       end
 
       if consumer.spec.root?
         unless file_accessor.license || spec.license && (spec.license[:type] == 'Public Domain' || spec.license[:text])
-          warning 'Unable to find a license file'
+          warning('license', 'Unable to find a license file')
         end
+      end
+    end
+
+    def _validate_private_header_files
+      _validate_header_files(:private_header_files)
+    end
+
+    def _validate_public_header_files
+      _validate_header_files(:public_header_files)
+    end
+
+    # Ensures that a list of header files only contains header files.
+    #
+    def _validate_header_files(attr_name)
+      non_header_files = file_accessor.send(attr_name).
+        select { |f| !Sandbox::FileAccessor::HEADER_EXTENSIONS.include?(f.extname) }.
+        map { |f| f.relative_path_from file_accessor.root }
+      unless non_header_files.empty?
+        error(attr_name, "The pattern matches non-header files (#{non_header_files.join(', ')}).")
       end
     end
 
@@ -377,22 +407,24 @@ module Pod
 
     # !@group Result Helpers
 
-    def error(message)
-      add_result(:error, message)
+    def error(attribute_name, message)
+      add_result(:error, attribute_name, message)
     end
 
-    def warning(message)
-      add_result(:warning, message)
+    def warning(attribute_name, message)
+      add_result(:warning, attribute_name, message)
     end
 
-    def note(message)
-      add_result(:note, message)
+    def note(attribute_name, message)
+      add_result(:note, attribute_name, message)
     end
 
-    def add_result(type, message)
-      result = results.find { |r| r.type == type && r.message == message }
+    def add_result(type, attribute_name, message)
+      result = results.find do |r|
+        r.type == type && r.attribute_name && r.message == message
+      end
       unless result
-        result = Result.new(type, message)
+        result = Result.new(type, attribute_name, message)
         results << result
       end
       result.platforms << consumer.platform_name if consumer
@@ -401,9 +433,9 @@ module Pod
 
     # Specialized Result to support subspecs aggregation
     #
-    class Result < Specification::Linter::Result
-      def initialize(type, message)
-        super(type, message)
+    class Result < Specification::Linter::Results::Result
+      def initialize(type, attribute_name, message)
+        super(type, attribute_name, message)
         @subspecs = []
       end
 
@@ -421,19 +453,31 @@ module Pod
     #
     attr_reader :source_urls
 
+    # @param  [String] platform_name
+    #         the name of the platform, which should be declared
+    #         in the Podfile.
+    #
+    # @param  [String] deployment_target
+    #         the deployment target, which should be declared in
+    #         the Podfile.
+    #
+    # @param  [Bool] use_frameworks
+    #         whether frameworks should be used for the installation
+    #
     # @return [Podfile] a podfile that requires the specification on the
-    # current platform.
+    #         current platform.
     #
     # @note   The generated podfile takes into account whether the linter is
     #         in local mode.
     #
-    def podfile_from_spec(platform_name, deployment_target)
+    def podfile_from_spec(platform_name, deployment_target, use_frameworks = nil)
       name     = subspec_name ? subspec_name : spec.name
       podspec  = file.realpath
       local    = local?
       urls     = source_urls
       podfile  = Pod::Podfile.new do
         urls.each { |u| source(u) }
+        use_frameworks!(use_frameworks) unless use_frameworks.nil?
         platform(platform_name, deployment_target)
         if local
           pod name, :path => podspec.dirname.to_s
